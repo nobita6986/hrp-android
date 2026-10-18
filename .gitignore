@@ -1,0 +1,30 @@
+*.iml
+.gradle/
+/build
+app/build/
+.kotlin/
+.DS_Store
+/captures
+.externalNativeBuild
+.cxx
+
+# IntelliJ / Android Studio
+/.idea/
+local.properties
+
+# Secrets, Keystores, & Credentials (DO NOT TRACK)
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+debug.keystore
+my-upload-key.jks
+secrets.properties
+
+# APK & Bundle outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+output-metadata.json
