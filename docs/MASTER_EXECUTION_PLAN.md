@@ -2,7 +2,7 @@
 ## DỰ ÁN ANDROID HRP (MOBILE CLIENT)
 
 > **Mã định danh hợp đồng:** `web-android-contract.md`  
-> **Hash SHA-256 Hợp đồng:** `2C109339EE1311EBCD8C9AC3EEB11F15981D23EB3A1195C04EBA4D42277E0AE3`  
+> **Hash SHA-256 Hợp đồng:** `90131B6F1F773E2D11E22020BFF95DADD8310E0B02FB9881C06267122ED774E9`  
 > **Git Repository Android:** `https://github.com/nobita6986/hrp-android` (Thư mục: `D:\CodeApp\hr-partner`)  
 > **Backend Repository:** `D:\CodeApp\HRP`  
 > **Thời điểm lập:** 18/10/2026  
