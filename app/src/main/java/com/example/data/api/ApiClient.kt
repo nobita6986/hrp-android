@@ -92,4 +92,39 @@ object ApiClient {
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
     }
+
+    private val webHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
+
+    fun getSiteOriginUrl(): String {
+        val base = getBaseUrl().trimEnd('/')
+        return if (base.endsWith("/api", ignoreCase = true)) {
+            base.dropLast(4)
+        } else {
+            base
+        }
+    }
+
+    fun fetchWebPageHtml(url: String): String? {
+        return try {
+            val request = okhttp3.Request.Builder()
+                .url(url)
+                .header("Accept", "text/html,application/xhtml+xml")
+                .build()
+            webHttpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    response.body?.string()
+                } else {
+                    null
+                }
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
 }

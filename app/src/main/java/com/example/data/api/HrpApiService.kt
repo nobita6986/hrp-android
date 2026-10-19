@@ -9,6 +9,7 @@ import com.example.data.api.model.FeedbackSubmitData
 import com.example.data.api.model.FeedbackSubmitRequest
 import com.example.data.api.model.JobApplicationRequest
 import com.example.data.api.model.JobApplicationResponse
+import com.example.data.api.model.JobDetailRootResponse
 import com.example.data.api.model.JobsRootResponse
 import com.example.data.api.model.LoginRequest
 import com.example.data.api.model.LoginResponse
@@ -124,6 +125,14 @@ interface HrpApiService {
         @Query("jobType") jobType: String? = null,
         @Query("urgency") urgency: String? = null
     ): JobsRootResponse
+
+    /**
+     * 8b. GET /api/jobs/{slug} (Root JSON { job })
+     */
+    @GET("jobs/{slug}")
+    suspend fun getPublicJobDetail(
+        @Path("slug") slug: String
+    ): JobDetailRootResponse
 
     /**
      * 9. POST /api/public/jobs/{slug}/applications (Root JSON { trackingCode, status })

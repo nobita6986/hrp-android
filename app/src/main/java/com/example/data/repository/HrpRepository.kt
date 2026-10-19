@@ -11,6 +11,7 @@ import com.example.data.api.model.DeviceRegistrationRequest
 import com.example.data.api.model.FeedbackSubmitRequest
 import com.example.data.api.model.JobApplicationRequest
 import com.example.data.api.model.JobApplicationResponse
+import com.example.data.api.model.JobDetailHtmlParser
 import com.example.data.api.model.LoginRequest
 import com.example.data.api.model.LoginResponse
 import com.example.data.api.model.OtpSendData
@@ -625,6 +626,8 @@ class HrpRepository(
 
     // ==================== 8-9. PUBLIC JOBS & APPLICATIONS ====================
 
+    private val jobDetailCache = mutableMapOf<String, JobOpening>()
+
     /**
      * Endpoint 8: GET /api/jobs (Root JSON { jobs, nextOffset, total, facets, overview })
      */
@@ -637,12 +640,72 @@ class HrpRepository(
         try {
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
             val response = api.getPublicJobs(q = query, area = area, offset = offset, limit = limit)
-            val domainList = response.jobs.map { it.toDomain() }
+            val domainList = response.jobs.map { dto ->
+                val base = dto.toDomain()
+                val cached = jobDetailCache[base.slug]
+                if (cached != null && cached.isDetailLoaded) {
+                    base.copy(
+                        filledQuotaText = cached.filledQuotaText.ifBlank { base.filledQuotaText },
+                        deadlineDisplay = cached.deadlineDisplay.ifBlank { base.deadlineDisplay },
+                        description = cached.description.ifBlank { base.description },
+                        benefitsDetail = cached.benefitsDetail.ifBlank { base.benefitsDetail },
+                        requirementsDetail = cached.requirementsDetail.ifBlank { base.requirementsDetail },
+                        applicationGuide = cached.applicationGuide.ifBlank { base.applicationGuide },
+                        employerAddress = cached.employerAddress.ifBlank { base.employerAddress },
+                        isDetailLoaded = true
+                    )
+                } else {
+                    base
+                }
+            }
             _jobListings.value = domainList
             Result.success(domainList)
         } catch (t: Throwable) {
             Log.e(TAG, "Error fetching jobs: ${t.message}")
             Result.failure(ApiErrorParser.parseThrowable(t, "Không lấy được danh sách việc làm"))
+        }
+    }
+
+    /**
+     * Fetches full job details by slug (combining GET /api/jobs/{slug} and rich-text sections from /viec-lam/{slug}).
+     */
+    suspend fun fetchJobDetail(job: JobOpening): Result<JobOpening> = withContext(Dispatchers.IO) {
+        val slug = job.slug.takeIf { it.isNotBlank() } ?: job.id
+        jobDetailCache[slug]?.takeIf { it.isDetailLoaded }?.let { cached ->
+            return@withContext Result.success(cached)
+        }
+
+        try {
+            var resolvedJob = job
+            apiService?.let { api ->
+                try {
+                    val detailResp = api.getPublicJobDetail(slug)
+                    detailResp.job?.toDomain()?.let { apiJob ->
+                        resolvedJob = apiJob
+                    }
+                } catch (e: Throwable) {
+                    Log.w(TAG, "GET /api/jobs/$slug fallback to base job: ${e.message}")
+                }
+            }
+
+            if (!resolvedJob.isDetailLoaded) {
+                val webUrl = "${ApiClient.getSiteOriginUrl()}/viec-lam/$slug"
+                val html = ApiClient.fetchWebPageHtml(webUrl)
+                if (!html.isNullOrBlank()) {
+                    resolvedJob = JobDetailHtmlParser.enrichJobWithHtml(resolvedJob, html)
+                }
+            }
+
+            if (resolvedJob.isDetailLoaded) {
+                jobDetailCache[slug] = resolvedJob
+            }
+            _jobListings.value = _jobListings.value.map { existing ->
+                if (existing.id == resolvedJob.id || existing.slug == slug) resolvedJob else existing
+            }
+            Result.success(resolvedJob)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error fetching job detail for $slug: ${t.message}")
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không tải được chi tiết việc làm"))
         }
     }
 

@@ -218,7 +218,17 @@ data class JobOpening(
     val urgent: Boolean = false,
     val shift: String? = null,
     val position: String? = null,
-    val deadline: String? = null
+    val deadline: String? = null,
+    val jobTypeLabel: String = "Toàn thời gian",
+    val statusLabel: String = "Đang tuyển",
+    val filledQuotaText: String = "",
+    val deadlineDisplay: String = "",
+    val description: String = "",
+    val benefitsDetail: String = "",
+    val requirementsDetail: String = "",
+    val applicationGuide: String = "",
+    val employerAddress: String = "",
+    val isDetailLoaded: Boolean = false
 )
 
 data class CtvCandidate(

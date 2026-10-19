@@ -136,6 +136,8 @@ fun HrpApp(
     val showAdvanceSalaryDialog by viewModel.showAdvanceSalaryDialog.collectAsState()
     val showCheckInSuccessDialog by viewModel.showCheckInSuccessDialog.collectAsState()
     val showApplyJobDialog by viewModel.showApplyJobDialog.collectAsState()
+    val selectedJobDetail by viewModel.selectedJobDetail.collectAsState()
+    val isLoadingJobDetail by viewModel.isLoadingJobDetail.collectAsState()
 
     val showPhoneOtpDialog by viewModel.showPhoneOtpDialog.collectAsState()
     val otpCooldownSeconds by viewModel.otpCooldownSeconds.collectAsState()
@@ -212,8 +214,8 @@ fun HrpApp(
         }
     }
 
-    // Handle back button: return to Home tab if on a sub-screen
-    BackHandler(enabled = currentTab != NavigationTab.HOME) {
+    // Handle back button: return to Home tab if on a sub-screen (when not viewing a job detail)
+    BackHandler(enabled = currentTab != NavigationTab.HOME && selectedJobDetail == null) {
         viewModel.selectTab(NavigationTab.HOME)
     }
 
@@ -265,7 +267,11 @@ fun HrpApp(
                     NavigationTab.JOBS -> {
                         JobBoardScreen(
                             jobs = jobListings,
-                            onApplyJob = { viewModel.openApplyJob(it) }
+                            onApplyJob = { viewModel.openApplyJob(it) },
+                            selectedJobDetail = selectedJobDetail,
+                            isLoadingJobDetail = isLoadingJobDetail,
+                            onViewJobDetail = { viewModel.openJobDetail(it) },
+                            onCloseJobDetail = { viewModel.openJobDetail(null) }
                         )
                     }
 

@@ -404,6 +404,70 @@ class HrpNetworkAndAuthTest {
         }
         assertTrue(spaceResult.isFailure)
     }
+
+    @Test
+    fun `test JobDetailHtmlParser parses Piaggio web job detail HTML sections and metadata accurately`() {
+        val baseDto = com.example.data.api.model.JobOpeningResponse(
+            id = "4b268856-018f-46b9-a2be-941401f2f277",
+            slug = "cty-piaggio-binh-xuyen-1-0-23f5f452",
+            title = "CTY- PIAGGIO - BÌNH XUYÊN 1",
+            companyName = "CTY- PIAGGIO",
+            position = "CTY- PIAGGIO - BÌNH XUYÊN 1",
+            shift = "08:00-20:00",
+            location = "KCN BÌNH XUYÊN 1",
+            jobType = "toan_thoi_gian",
+            availableSlots = 20,
+            deadline = "2026-10-31T00:00:00.000Z",
+            statusLabel = "Đang tuyển",
+            isHot = true,
+            salaryDisplay = "10~15tr"
+        )
+        val baseJob = baseDto.toDomain()
+        assertEquals("Toàn thời gian", baseJob.jobTypeLabel)
+        assertEquals("31/10/2026", baseJob.deadlineDisplay)
+        assertFalse(baseJob.isDetailLoaded)
+
+        val sampleHtml = """
+            <dl class="mt-5 grid gap-3 sm:grid-cols-3">
+              <div><dt class="text-xs">Mức lương</dt><dd class="text-sm font-semibold">10~15tr</dd></div>
+              <div><dt class="text-xs">Chỗ trống</dt><dd class="text-sm font-semibold">Còn 20 chỗ trống</dd></div>
+              <div><dt class="text-xs">Chỉ tiêu đã tuyển</dt><dd class="text-sm font-semibold">0/20</dd></div>
+              <div><dt class="text-xs">Hạn nhận hồ sơ</dt><dd class="text-sm font-semibold">31/10/2026</dd></div>
+            </dl>
+            <section data-section="rich-text" data-source="REAL" aria-label="Mô tả công việc" class="rounded-xl border p-5">
+              <h2 class="text-base font-semibold mb-3">Mô tả công việc</h2>
+              <div class="prose-like"><p>🚀Tuyển gấp 50 nam - Vị trí:lắp ráp - Có tăng ca, làm thêm thứ 7 x 200% - LCB : 7.700.000đ/22 công</p></div>
+            </section>
+            <section data-section="rich-text" data-source="REAL" aria-label="Phúc lợi" class="rounded-xl border p-5">
+              <h2 class="text-base font-semibold mb-3">Phúc lợi</h2>
+              <div class="prose-like"><p>✔ Hỗ trợ ứng lương sau 7 ngày làm việc và tìm nhà trọ cho công nhân ở xa</p></div>
+            </section>
+            <section data-section="rich-text" data-source="REAL" aria-label="Yêu cầu ứng viên" class="rounded-xl border p-5">
+              <h2 class="text-base font-semibold mb-3">Yêu cầu ứng viên</h2>
+              <div class="prose-like"><p>Trong Độ Tuổi Lao Động</p></div>
+            </section>
+            <section data-section="rich-text" data-source="REAL" aria-label="Hướng dẫn ứng tuyển" class="rounded-xl border p-5">
+              <h2 class="text-base font-semibold mb-3">Hướng dẫn ứng tuyển</h2>
+              <div class="prose-like"><p>👉Bấm vào nút Ứng tuyển trên website hoặc liên hệ với Zalo/ĐT: 0968114696</p></div>
+            </section>
+            <aside data-section="employer-sidebar" data-source="REAL" aria-label="Đơn vị tuyển dụng">
+              <div class="flex items-start gap-2 text-xs">
+                <span class="material-symbols-outlined">location_on</span><span>KCN BÌNH XUYÊN 1</span>
+              </div>
+            </aside>
+        """.trimIndent()
+
+        val enriched = com.example.data.api.model.JobDetailHtmlParser.enrichJobWithHtml(baseJob, sampleHtml)
+        assertTrue(enriched.isDetailLoaded)
+        assertEquals("0/20", enriched.filledQuotaText)
+        assertEquals("31/10/2026", enriched.deadlineDisplay)
+        assertTrue(enriched.description.contains("Tuyển gấp 50 nam"))
+        assertTrue(enriched.benefitsDetail.contains("Hỗ trợ ứng lương sau 7 ngày"))
+        assertEquals("Trong Độ Tuổi Lao Động", enriched.requirementsDetail)
+        assertTrue(enriched.applicationGuide.contains("0968114696"))
+        assertEquals("KCN BÌNH XUYÊN 1", enriched.employerAddress)
+    }
 }
+
 
 

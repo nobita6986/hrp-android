@@ -121,6 +121,12 @@ class HrpViewModel(
     private val _showApplyJobDialog = MutableStateFlow<JobOpening?>(null)
     val showApplyJobDialog: StateFlow<JobOpening?> = _showApplyJobDialog.asStateFlow()
 
+    private val _selectedJobDetail = MutableStateFlow<JobOpening?>(null)
+    val selectedJobDetail: StateFlow<JobOpening?> = _selectedJobDetail.asStateFlow()
+
+    private val _isLoadingJobDetail = MutableStateFlow(false)
+    val isLoadingJobDetail: StateFlow<Boolean> = _isLoadingJobDetail.asStateFlow()
+
     init {
         repository.initServices(application)
         if (_isLoggedIn.value) {
@@ -336,6 +342,10 @@ class HrpViewModel(
     // ==================== NAVIGATION & DIALOGS ====================
 
     fun selectTab(tab: NavigationTab) {
+        if (tab != NavigationTab.JOBS) {
+            _selectedJobDetail.value = null
+            _isLoadingJobDetail.value = false
+        }
         _currentTab.value = tab
         viewModelScope.launch {
             when (tab) {
@@ -377,6 +387,29 @@ class HrpViewModel(
 
     fun openApplyJob(job: JobOpening?) {
         _showApplyJobDialog.value = job
+    }
+
+    fun openJobDetail(job: JobOpening?) {
+        if (job == null) {
+            _selectedJobDetail.value = null
+            _isLoadingJobDetail.value = false
+            return
+        }
+        _selectedJobDetail.value = job
+        if (job.isDetailLoaded) {
+            _isLoadingJobDetail.value = false
+            return
+        }
+        viewModelScope.launch {
+            _isLoadingJobDetail.value = true
+            val result = repository.fetchJobDetail(job)
+            _isLoadingJobDetail.value = false
+            result.onSuccess { detailed ->
+                if (_selectedJobDetail.value?.slug == job.slug || _selectedJobDetail.value?.id == job.id) {
+                    _selectedJobDetail.value = detailed
+                }
+            }
+        }
     }
 
     fun clearToast() {

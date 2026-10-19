@@ -540,6 +540,11 @@ data class JobsRootResponse(
 )
 
 @JsonClass(generateAdapter = true)
+data class JobDetailRootResponse(
+    @param:Json(name = "job") val job: JobOpeningResponse? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class JobOpeningResponse(
     @param:Json(name = "id") val id: String,
     @param:Json(name = "slug") val slug: String? = null,
@@ -572,7 +577,13 @@ data class JobOpeningResponse(
     @param:Json(name = "shifts") val shifts: List<String> = emptyList(),
     @param:Json(name = "commissionVnd") val commissionVnd: Long = 0L,
     @param:Json(name = "benefits") val benefits: List<String> = emptyList(),
-    @param:Json(name = "requirements") val requirements: String = ""
+    @param:Json(name = "requirements") val requirements: String = "",
+    @param:Json(name = "description") val description: String? = null,
+    @param:Json(name = "benefitsDetail") val benefitsDetail: String? = null,
+    @param:Json(name = "requirementsDetail") val requirementsDetail: String? = null,
+    @param:Json(name = "applicationGuide") val applicationGuide: String? = null,
+    @param:Json(name = "employerAddress") val employerAddress: String? = null,
+    @param:Json(name = "filledQuota") val filledQuota: String? = null
 ) {
     fun toDomain(): JobOpening {
         val resolvedSalary = salaryDisplay
@@ -583,13 +594,29 @@ data class JobOpeningResponse(
                 "Thỏa thuận"
             }
 
+        val resolvedJobTypeLabel = when (jobType?.lowercase()?.trim()) {
+            "toan_thoi_gian", "full_time", "fulltime" -> "Toàn thời gian"
+            "thoi_vu", "seasonal", "temporary" -> "Thời vụ"
+            "ban_thoi_gian", "part_time", "parttime" -> "Bán thời gian"
+            null, "" -> "Toàn thời gian"
+            else -> jobType
+        }
+
+        val resolvedStatusLabel = statusLabel?.takeIf { it.isNotBlank() } ?: "Đang tuyển"
+
         val resolvedBenefits = benefits.ifEmpty {
             listOfNotNull(
-                shift?.let { "Ca: $it" },
-                jobType?.let { "Loại: $it" },
-                statusLabel
+                shift?.takeIf { it.isNotBlank() }?.let { "Ca: $it" },
+                resolvedJobTypeLabel.takeIf { it.isNotBlank() },
+                resolvedStatusLabel
             )
         }
+
+        val formattedDeadline = JobDetailHtmlParser.formatIsoDateToVn(deadline)
+        val hasRichDetails = !description.isNullOrBlank() ||
+            !benefitsDetail.isNullOrBlank() ||
+            !requirementsDetail.isNullOrBlank() ||
+            !applicationGuide.isNullOrBlank()
 
         return JobOpening(
             id = id,
@@ -603,10 +630,179 @@ data class JobOpeningResponse(
             benefits = resolvedBenefits,
             requirements = requirements,
             urgent = isUrgent || urgent || isHot,
-            shift = shift,
-            position = position,
-            deadline = deadline
+            shift = shift ?: shifts.firstOrNull(),
+            position = position ?: positionTitles.firstOrNull(),
+            deadline = deadline,
+            jobTypeLabel = resolvedJobTypeLabel,
+            statusLabel = resolvedStatusLabel,
+            filledQuotaText = filledQuota.orEmpty(),
+            deadlineDisplay = formattedDeadline,
+            description = description.orEmpty(),
+            benefitsDetail = benefitsDetail.orEmpty(),
+            requirementsDetail = requirementsDetail ?: requirements,
+            applicationGuide = applicationGuide.orEmpty(),
+            employerAddress = employerAddress.orEmpty(),
+            isDetailLoaded = hasRichDetails
         )
+    }
+}
+
+/**
+ * Parses rich-text sections and summary metadata from the public job detail page (/viec-lam/{slug}).
+ */
+object JobDetailHtmlParser {
+    private val SECTION_REGEX = Regex(
+        """<section[^>]*data-section=["']rich-text["'][^>]*aria-label=["']([^"']+)["'][^>]*>(.*?)</section>""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+    )
+    private val PROSE_DIV_REGEX = Regex(
+        """<div[^>]*class=["'][^"']*prose-like[^"']*["'][^>]*>(.*?)</div>""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+    )
+    private val DL_PAIR_REGEX = Regex(
+        """<dt[^>]*>(.*?)</dt>\s*<dd[^>]*>(.*?)</dd>""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+    )
+    private val EMPLOYER_SIDEBAR_REGEX = Regex(
+        """<aside[^>]*data-section=["']employer-sidebar["'][^>]*>(.*?)</aside>""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+    )
+    private val EMPLOYER_LOCATION_REGEX = Regex(
+        """location_on</span>\s*<span[^>]*>(.*?)</span>""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+    )
+
+    fun formatIsoDateToVn(rawDate: String?): String {
+        if (rawDate.isNullOrBlank()) return ""
+        val trimmed = rawDate.trim()
+        // Already dd/MM/yyyy
+        if (Regex("""^\d{2}/\d{2}/\d{4}$""").matches(trimmed)) return trimmed
+        // ISO yyyy-MM-dd...
+        if (trimmed.length >= 10 && trimmed[4] == '-' && trimmed[7] == '-') {
+            val year = trimmed.substring(0, 4)
+            val month = trimmed.substring(5, 7)
+            val day = trimmed.substring(8, 10)
+            return "$day/$month/$year"
+        }
+        return trimmed
+    }
+
+    fun enrichJobWithHtml(baseJob: JobOpening, html: String): JobOpening {
+        if (html.isBlank()) return baseJob
+
+        var description = baseJob.description
+        var benefitsDetail = baseJob.benefitsDetail
+        var requirementsDetail = baseJob.requirementsDetail
+        var applicationGuide = baseJob.applicationGuide
+
+        for (match in SECTION_REGEX.findAll(html)) {
+            val label = cleanHtmlToText(match.groupValues[1]).lowercase()
+            val sectionContent = match.groupValues[2]
+            val innerHtml = PROSE_DIV_REGEX.find(sectionContent)?.groupValues?.get(1)
+                ?: sectionContent.substringAfter("</h2>", sectionContent)
+            val cleanedText = cleanHtmlToText(innerHtml)
+            if (cleanedText.isNotBlank()) {
+                when {
+                    label.contains("mô tả công việc") -> description = cleanedText
+                    label.contains("phúc lợi") -> benefitsDetail = cleanedText
+                    label.contains("yêu cầu") -> requirementsDetail = cleanedText
+                    label.contains("hướng dẫn ứng tuyển") -> applicationGuide = cleanedText
+                }
+            }
+        }
+
+        var salaryRange = baseJob.salaryRange
+        var slotsRemaining = baseJob.slotsRemaining
+        var filledQuotaText = baseJob.filledQuotaText
+        var deadlineDisplay = baseJob.deadlineDisplay
+
+        for (match in DL_PAIR_REGEX.findAll(html)) {
+            val dt = cleanHtmlToText(match.groupValues[1]).lowercase()
+            val dd = cleanHtmlToText(match.groupValues[2])
+            if (dd.isNotBlank()) {
+                when {
+                    dt.contains("mức lương") -> salaryRange = dd
+                    dt.contains("chỗ trống") -> {
+                        val digits = Regex("""\d+""").find(dd)?.value?.toIntOrNull()
+                        if (digits != null) slotsRemaining = digits
+                    }
+                    dt.contains("chỉ tiêu đã tuyển") -> filledQuotaText = dd
+                    dt.contains("hạn nhận hồ sơ") -> deadlineDisplay = dd
+                }
+            }
+        }
+
+        var employerAddress = baseJob.employerAddress
+        val sidebarMatch = EMPLOYER_SIDEBAR_REGEX.find(html)
+        if (sidebarMatch != null) {
+            val locMatch = EMPLOYER_LOCATION_REGEX.find(sidebarMatch.groupValues[1])
+            if (locMatch != null) {
+                val parsedAddr = cleanHtmlToText(locMatch.groupValues[1])
+                if (parsedAddr.isNotBlank()) {
+                    employerAddress = parsedAddr
+                }
+            }
+        }
+
+        val hasLoadedAnyDetail = description.isNotBlank() ||
+            benefitsDetail.isNotBlank() ||
+            requirementsDetail.isNotBlank() ||
+            applicationGuide.isNotBlank() ||
+            filledQuotaText.isNotBlank()
+
+        return baseJob.copy(
+            salaryRange = salaryRange,
+            slotsRemaining = slotsRemaining,
+            filledQuotaText = filledQuotaText,
+            deadlineDisplay = deadlineDisplay.ifBlank { formatIsoDateToVn(baseJob.deadline) },
+            description = description,
+            benefitsDetail = benefitsDetail,
+            requirementsDetail = requirementsDetail,
+            applicationGuide = applicationGuide,
+            employerAddress = employerAddress,
+            isDetailLoaded = hasLoadedAnyDetail || baseJob.isDetailLoaded
+        )
+    }
+
+    fun cleanHtmlToText(rawHtml: String): String {
+        if (rawHtml.isBlank()) return ""
+        val withLineBreaks = rawHtml
+            .replace(Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("""</p\s*>""", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("""</div\s*>""", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("""</li\s*>""", RegexOption.IGNORE_CASE), "\n")
+            .replace(Regex("""<li[^>]*>""", RegexOption.IGNORE_CASE), "• ")
+            .replace(Regex("""/-li\s*""", RegexOption.IGNORE_CASE), "\n• ")
+
+        val withoutTags = withLineBreaks.replace(Regex("""<[^>]+>"""), "")
+        val decoded = decodeHtmlEntities(withoutTags)
+
+        return decoded
+            .lines()
+            .map { it.replace(Regex("""[^\S\r\n]+"""), " ").trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n")
+    }
+
+    private fun decodeHtmlEntities(input: String): String {
+        var result = input
+            .replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&apos;", "'")
+
+        result = Regex("""&#(\d+);""").replace(result) { match ->
+            val code = match.groupValues[1].toIntOrNull()
+            if (code != null) code.toChar().toString() else match.value
+        }
+        result = Regex("""&#x([0-9a-fA-F]+);""").replace(result) { match ->
+            val code = match.groupValues[1].toIntOrNull(16)
+            if (code != null) code.toChar().toString() else match.value
+        }
+        return result
     }
 }
 
