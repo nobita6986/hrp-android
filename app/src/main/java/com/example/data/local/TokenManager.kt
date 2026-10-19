@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -26,11 +27,17 @@ open class TokenManager(private val context: Context) {
         private const val SP_KEY_ROLE = "cached_role"
         private const val SP_KEY_PHONE = "cached_phone"
         private const val SP_KEY_NAME = "cached_name"
+        private const val SP_KEY_PHONE_VERIFIED = "cached_phone_verified"
+        private const val SP_KEY_VERIFICATION_STATUS = "cached_verification_status"
+        private const val SP_KEY_HAS_ASSIGNMENT = "cached_has_assignment"
 
         val PREF_TOKEN = stringPreferencesKey("jwt_token")
         val PREF_ROLE = stringPreferencesKey("user_role")
         val PREF_PHONE = stringPreferencesKey("user_phone")
         val PREF_NAME_KEY = stringPreferencesKey("user_full_name")
+        val PREF_PHONE_VERIFIED = booleanPreferencesKey("user_phone_verified")
+        val PREF_VERIFICATION_STATUS = stringPreferencesKey("user_verification_status")
+        val PREF_HAS_ASSIGNMENT = booleanPreferencesKey("user_has_assignment")
         val PREF_FCM_TOKEN = stringPreferencesKey("fcm_token")
 
         @Volatile
@@ -46,7 +53,7 @@ open class TokenManager(private val context: Context) {
     private val sharedPrefs: SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    // Fast synchronous in-memory cache for OkHttp AuthInterceptor
+    // Fast synchronous in-memory cache for OkHttp AuthInterceptor & UI state initialization
     private val cachedToken = AtomicReference<String?>(sharedPrefs.getString(SP_KEY_TOKEN, null))
     private val cachedRole = AtomicReference<String?>(sharedPrefs.getString(SP_KEY_ROLE, null))
 
@@ -76,6 +83,26 @@ open class TokenManager(private val context: Context) {
         return cachedRole.get() ?: sharedPrefs.getString(SP_KEY_ROLE, null)
     }
 
+    open fun getPhone(): String? {
+        return sharedPrefs.getString(SP_KEY_PHONE, null)
+    }
+
+    open fun getFullName(): String? {
+        return sharedPrefs.getString(SP_KEY_NAME, null)
+    }
+
+    open fun isPhoneVerified(): Boolean {
+        return sharedPrefs.getBoolean(SP_KEY_PHONE_VERIFIED, false)
+    }
+
+    open fun getVerificationStatus(): String {
+        return sharedPrefs.getString(SP_KEY_VERIFICATION_STATUS, "NONE") ?: "NONE"
+    }
+
+    open fun hasActiveAssignment(): Boolean {
+        return sharedPrefs.getBoolean(SP_KEY_HAS_ASSIGNMENT, false)
+    }
+
     open fun isLoggedIn(): Boolean {
         return !getToken().isNullOrBlank()
     }
@@ -96,7 +123,15 @@ open class TokenManager(private val context: Context) {
         }
     }
 
-    suspend fun saveUserSession(token: String, phone: String, role: String, fullName: String) {
+    suspend fun saveUserSession(
+        token: String,
+        phone: String,
+        role: String,
+        fullName: String,
+        phoneVerified: Boolean = false,
+        verificationStatus: String = "NONE",
+        hasActiveAssignment: Boolean = false
+    ) {
         cachedToken.set(token)
         cachedRole.set(role)
         _tokenFlow.value = token
@@ -106,6 +141,9 @@ open class TokenManager(private val context: Context) {
             .putString(SP_KEY_PHONE, phone)
             .putString(SP_KEY_ROLE, role)
             .putString(SP_KEY_NAME, fullName)
+            .putBoolean(SP_KEY_PHONE_VERIFIED, phoneVerified)
+            .putString(SP_KEY_VERIFICATION_STATUS, verificationStatus)
+            .putBoolean(SP_KEY_HAS_ASSIGNMENT, hasActiveAssignment)
             .apply()
 
         context.dataStore.edit { preferences ->
@@ -113,6 +151,31 @@ open class TokenManager(private val context: Context) {
             preferences[PREF_PHONE] = phone
             preferences[PREF_ROLE] = role
             preferences[PREF_NAME_KEY] = fullName
+            preferences[PREF_PHONE_VERIFIED] = phoneVerified
+            preferences[PREF_VERIFICATION_STATUS] = verificationStatus
+            preferences[PREF_HAS_ASSIGNMENT] = hasActiveAssignment
+        }
+    }
+
+    suspend fun updatePhoneVerified(verified: Boolean) {
+        sharedPrefs.edit().putBoolean(SP_KEY_PHONE_VERIFIED, verified).apply()
+        context.dataStore.edit { preferences ->
+            preferences[PREF_PHONE_VERIFIED] = verified
+        }
+    }
+
+    suspend fun updateVerificationStatus(status: String, hasAssignment: Boolean? = null) {
+        val editor = sharedPrefs.edit().putString(SP_KEY_VERIFICATION_STATUS, status)
+        if (hasAssignment != null) {
+            editor.putBoolean(SP_KEY_HAS_ASSIGNMENT, hasAssignment)
+        }
+        editor.apply()
+
+        context.dataStore.edit { preferences ->
+            preferences[PREF_VERIFICATION_STATUS] = status
+            if (hasAssignment != null) {
+                preferences[PREF_HAS_ASSIGNMENT] = hasAssignment
+            }
         }
     }
 
@@ -134,6 +197,9 @@ open class TokenManager(private val context: Context) {
             preferences.remove(PREF_PHONE)
             preferences.remove(PREF_ROLE)
             preferences.remove(PREF_NAME_KEY)
+            preferences.remove(PREF_PHONE_VERIFIED)
+            preferences.remove(PREF_VERIFICATION_STATUS)
+            preferences.remove(PREF_HAS_ASSIGNMENT)
         }
     }
 }

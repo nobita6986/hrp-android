@@ -4,32 +4,51 @@ import android.content.Context
 import android.util.Log
 import com.example.data.api.ApiClient
 import com.example.data.api.HrpApiService
-import com.example.data.api.model.CandidateRegistrationRequest
-import com.example.data.api.model.CheckInRequest
-import com.example.data.api.model.CheckOutRequest
-import com.example.data.api.model.CreateTicketRequest
+import com.example.data.api.model.ApiErrorParser
+import com.example.data.api.model.CheckInEventData
+import com.example.data.api.model.CheckInEventRequest
+import com.example.data.api.model.DeviceRegistrationRequest
+import com.example.data.api.model.FeedbackSubmitRequest
+import com.example.data.api.model.JobApplicationRequest
+import com.example.data.api.model.JobApplicationResponse
 import com.example.data.api.model.LoginRequest
 import com.example.data.api.model.LoginResponse
-import com.example.data.api.model.UpdateTicketStatusRequest
+import com.example.data.api.model.OtpSendData
+import com.example.data.api.model.OtpSendRequest
+import com.example.data.api.model.OtpVerifyData
+import com.example.data.api.model.OtpVerifyRequest
+import com.example.data.api.model.ReferralSubmitRequest
+import com.example.data.api.model.RegisterData
+import com.example.data.api.model.RegisterRequest
+import com.example.data.api.model.WorkerVerificationRequest
 import com.example.data.local.TokenManager
 import com.example.data.model.AttendanceDay
 import com.example.data.model.AttendanceStatus
 import com.example.data.model.BodOverviewStats
 import com.example.data.model.CtvCandidate
+import com.example.data.model.FeedbackCategory
+import com.example.data.model.FeedbackItem
 import com.example.data.model.JobOpening
 import com.example.data.model.PayslipSummary
+import com.example.data.model.PublicProject
+import com.example.data.model.ReferralItem
+import com.example.data.model.ReferralProgram
 import com.example.data.model.TicketItem
-import com.example.data.model.TicketStatus
 import com.example.data.model.TicketType
 import com.example.data.model.UserRole
+import com.example.data.model.VerificationStatus
 import com.example.data.model.WorkerProfile
+import com.example.data.model.WorkerVerificationInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 
 object HrpFormatters {
@@ -46,6 +65,17 @@ object HrpFormatters {
             amount >= 1_000_000L -> String.format(Locale.US, "%.1f Tr đ", amount / 1_000_000.0)
             else -> formatVnd(amount)
         }
+    }
+
+    fun todayDateIso(): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        return sdf.format(Date())
+    }
+
+    fun nowIsoTimestamp(): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+        sdf.timeZone = TimeZone.getTimeZone("UTC")
+        return sdf.format(Date())
     }
 }
 
@@ -105,10 +135,19 @@ class HrpRepository(
             baseSalaryPerDayVnd = 0L,
             joinedDate = "",
             bankAccount = "",
-            status = "PENDING_VERIFICATION"
+            status = "PENDING_VERIFICATION",
+            phoneVerified = false,
+            verificationStatus = VerificationStatus.NONE,
+            hasActiveAssignment = false
         )
     )
     val workerProfile: StateFlow<WorkerProfile> = _workerProfile.asStateFlow()
+
+    private val _verificationInfo = MutableStateFlow<WorkerVerificationInfo?>(null)
+    val verificationInfo: StateFlow<WorkerVerificationInfo?> = _verificationInfo.asStateFlow()
+
+    private val _publicProjects = MutableStateFlow<List<PublicProject>>(emptyList())
+    val publicProjects: StateFlow<List<PublicProject>> = _publicProjects.asStateFlow()
 
     private val _attendanceList = MutableStateFlow<List<AttendanceDay>>(emptyList())
     val attendanceList: StateFlow<List<AttendanceDay>> = _attendanceList.asStateFlow()
@@ -140,6 +179,15 @@ class HrpRepository(
     private val _tickets = MutableStateFlow<List<TicketItem>>(emptyList())
     val tickets: StateFlow<List<TicketItem>> = _tickets.asStateFlow()
 
+    private val _feedbackList = MutableStateFlow<List<FeedbackItem>>(emptyList())
+    val feedbackList: StateFlow<List<FeedbackItem>> = _feedbackList.asStateFlow()
+
+    private val _referralProgram = MutableStateFlow<ReferralProgram?>(null)
+    val referralProgram: StateFlow<ReferralProgram?> = _referralProgram.asStateFlow()
+
+    private val _referralList = MutableStateFlow<List<ReferralItem>>(emptyList())
+    val referralList: StateFlow<List<ReferralItem>> = _referralList.asStateFlow()
+
     private val _jobListings = MutableStateFlow<List<JobOpening>>(emptyList())
     val jobListings: StateFlow<List<JobOpening>> = _jobListings.asStateFlow()
 
@@ -163,14 +211,35 @@ class HrpRepository(
         _currentRole.value = UserRole.WORKER
     }
 
-    // ==================== AUTH ACTIONS ====================
+    // ==================== 1-4. AUTH & PHONE OTP ACTIONS ====================
 
+    /**
+     * Endpoint 1: POST /api/auth/register
+     */
+    suspend fun register(phone: String, password: String, fullName: String): Result<RegisterData> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.register(RegisterRequest(phone = phone, password = password, fullName = fullName))
+            if (response.isSuccessful && response.data != null) {
+                Result.success(response.data)
+            } else {
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = response.message ?: "Đăng ký tài khoản thất bại"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không thể đăng ký tài khoản"))
+        }
+    }
+
+    /**
+     * Endpoint 2: POST /api/auth/login (Root JSON)
+     */
     suspend fun login(phone: String, password: String): Result<LoginResponse> = withContext(Dispatchers.IO) {
         try {
-            val response = apiService?.login(LoginRequest(phone, password))
-            val hasSession = !response?.token.isNullOrBlank() || tokenManager?.isLoggedIn() == true
-            if (response != null && (response.success || response.token != null || hasSession)) {
-                val roleStr = response.role ?: "WORKER"
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.login(LoginRequest(phone, password))
+            val hasSession = !response.token.isNullOrBlank() || tokenManager?.isLoggedIn() == true
+            if (response.ok && response.success && (response.token != null || hasSession)) {
+                val roleStr = response.role ?: response.user?.role ?: "WORKER"
                 if (!roleStr.equals("WORKER", ignoreCase = true)) {
                     tokenManager?.clearToken()
                     return@withContext Result.failure(
@@ -179,28 +248,89 @@ class HrpRepository(
                 }
 
                 val token = response.token ?: tokenManager?.getToken() ?: "session_valid"
+                val accountUser = response.user
+                val workerDto = response.worker
+
+                val resolvedName = workerDto?.fullName?.takeIf { it.isNotBlank() }
+                    ?: accountUser?.fullName?.takeIf { it.isNotBlank() }
+                    ?: accountUser?.name?.takeIf { it.isNotBlank() }
+                    ?: "Người Lao Động"
+                val resolvedPhone = workerDto?.phone?.takeIf { it.isNotBlank() }
+                    ?: accountUser?.phone?.takeIf { it.isNotBlank() }
+                    ?: phone
+                val phoneVerified = workerDto?.phoneVerified ?: accountUser?.phoneVerified ?: false
+                val verStatusStr = workerDto?.verificationStatus ?: accountUser?.verificationStatus ?: "UNVERIFIED"
+                val hasActiveAssignment = workerDto?.hasActiveAssignment ?: false
+
                 tokenManager?.saveUserSession(
                     token = token,
-                    phone = phone,
+                    phone = resolvedPhone,
                     role = "WORKER",
-                    fullName = response.user?.fullName ?: "Người Lao Động"
+                    fullName = resolvedName,
+                    phoneVerified = phoneVerified,
+                    verificationStatus = verStatusStr,
+                    hasActiveAssignment = hasActiveAssignment
                 )
                 _currentRole.value = UserRole.WORKER
 
-                response.user?.let {
-                    _workerProfile.value = it.toDomain()
+                if (workerDto != null) {
+                    _workerProfile.value = workerDto.toDomain()
+                } else {
+                    _workerProfile.value = _workerProfile.value.copy(
+                        id = accountUser?.id ?: "",
+                        fullName = resolvedName,
+                        phone = resolvedPhone,
+                        phoneVerified = phoneVerified,
+                        verificationStatus = VerificationStatus.fromString(verStatusStr),
+                        hasActiveAssignment = hasActiveAssignment
+                    )
                 }
 
-                // Refresh app data after successful login
                 loadInitialData()
 
                 Result.success(response)
             } else {
-                // Return real error from backend response
-                Result.failure(Exception(response?.message ?: "Sai số điện thoại hoặc mật khẩu"))
+                Result.failure(Exception(response.message ?: "Sai số điện thoại hoặc mật khẩu"))
             }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi máy chủ: ${e.localizedMessage ?: "Không thể kết nối tới backend"}"))
+        } catch (t: Throwable) {
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không thể đăng nhập. Vui lòng kiểm tra kết nối."))
+        }
+    }
+
+    /**
+     * Endpoint 3: POST /api/auth/phone-otp/send
+     */
+    suspend fun sendPhoneOtp(phone: String): Result<OtpSendData> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.sendPhoneOtp(OtpSendRequest(phone = phone))
+            if (response.isSuccessful && response.data != null) {
+                Result.success(response.data)
+            } else {
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = response.message ?: "Không thể gửi mã OTP"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(ApiErrorParser.parseThrowable(t, "Hệ thống gửi mã OTP đang tạm gián đoạn"))
+        }
+    }
+
+    /**
+     * Endpoint 4: POST /api/auth/phone-otp/verify
+     */
+    suspend fun verifyPhoneOtp(code: String): Result<OtpVerifyData> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.verifyPhoneOtp(OtpVerifyRequest(code = code))
+            if (response.isSuccessful && response.data != null) {
+                val isVerified = response.data.phoneVerified
+                tokenManager?.updatePhoneVerified(isVerified)
+                _workerProfile.value = _workerProfile.value.copy(phoneVerified = isVerified)
+                Result.success(response.data)
+            } else {
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = response.message ?: "Mã OTP không hợp lệ"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(ApiErrorParser.parseThrowable(t, "Xác thực OTP thất bại"))
         }
     }
 
@@ -215,101 +345,237 @@ class HrpRepository(
 
     suspend fun loadInitialData() = withContext(Dispatchers.IO) {
         fetchProfile()
+        fetchMyVerification()
         fetchAttendance()
         fetchTickets()
         fetchJobs()
+        fetchReferralProgram()
     }
 
+    /**
+     * GET /api/workers/me (Envelope)
+     */
     suspend fun fetchProfile(): Result<WorkerProfile> = withContext(Dispatchers.IO) {
         try {
-            val response = apiService?.getProfile()
-            if (response != null) {
-                val domain = response.toDomain()
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.getProfile()
+            val dto = response.data
+            if (response.isSuccessful && dto != null) {
+                val domain = dto.toDomain()
                 _workerProfile.value = domain
+                tokenManager?.updatePhoneVerified(domain.phoneVerified)
+                tokenManager?.updateVerificationStatus(domain.verificationStatus.name, domain.hasActiveAssignment)
                 Result.success(domain)
             } else {
-                Result.failure(Exception("Không lấy được thông tin hồ sơ"))
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Không lấy được thông tin hồ sơ"))
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching profile: ${e.message}")
-            Result.failure(e)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error fetching profile: ${t.message}")
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không lấy được thông tin hồ sơ"))
         }
     }
 
-    suspend fun fetchAttendance(): Result<List<AttendanceDay>> = withContext(Dispatchers.IO) {
+    // ==================== 5-7. PUBLIC PROJECTS & WORKER VERIFICATION ====================
+
+    /**
+     * Endpoint 5: GET /api/public/projects
+     */
+    suspend fun fetchPublicProjects(): Result<List<PublicProject>> = withContext(Dispatchers.IO) {
         try {
-            val response = apiService?.getAttendanceList()
-            if (response != null) {
-                val domainList = response.map { it.toDomain() }
-                _attendanceList.value = domainList
-                Result.success(domainList)
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.getPublicProjects("ACTIVE")
+            if (response.isSuccessful && response.data != null) {
+                val list = response.data.resolvedProjects()
+                _publicProjects.value = list
+                Result.success(list)
             } else {
-                Result.failure(Exception("Không lấy được dữ liệu chấm công"))
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Không tải được danh sách dự án"))
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching attendance: ${e.message}")
-            Result.failure(e)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error fetching public projects: ${t.message}")
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không tải được danh sách dự án"))
         }
     }
 
-    suspend fun fetchPayslip(): Result<PayslipSummary> = withContext(Dispatchers.IO) {
+    /**
+     * Endpoint 6: POST /api/worker-verifications
+     */
+    suspend fun submitWorkerVerification(
+        fullName: String,
+        cccdNumber: String,
+        dob: String,
+        projectId: String,
+        employeeCode: String
+    ): Result<WorkerVerificationInfo> = withContext(Dispatchers.IO) {
         try {
-            val response = apiService?.getPayslip()
-            if (response != null) {
-                val domain = response.toDomain()
-                _payslip.value = domain
-                Result.success(domain)
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val req = WorkerVerificationRequest(
+                fullName = fullName,
+                cccdNumber = cccdNumber,
+                dob = dob,
+                projectId = projectId,
+                employeeCode = employeeCode
+            )
+            val response = api.submitWorkerVerification(req)
+            val data = response.data
+            if (response.isSuccessful && data != null) {
+                val status = VerificationStatus.fromString(data.status)
+                val info = WorkerVerificationInfo(
+                    id = data.verificationId,
+                    status = status,
+                    projectId = projectId,
+                    employeeCode = employeeCode,
+                    submittedAt = data.submittedAt
+                )
+                _verificationInfo.value = info
+                _workerProfile.value = _workerProfile.value.copy(verificationStatus = status)
+                tokenManager?.updateVerificationStatus(status.name)
+                Result.success(info)
             } else {
-                Result.failure(Exception("Phiếu lương tạm thời chưa khả dụng"))
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Gửi yêu cầu xác thực thất bại"))
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching payslip: ${e.message}")
-            Result.failure(e)
+        } catch (t: Throwable) {
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không thể gửi yêu cầu xác thực công nhân"))
         }
     }
 
-    suspend fun fetchTickets(): Result<List<TicketItem>> = withContext(Dispatchers.IO) {
+    /**
+     * Endpoint 7: GET /api/worker-verifications/me
+     */
+    suspend fun fetchMyVerification(): Result<WorkerVerificationInfo?> = withContext(Dispatchers.IO) {
         try {
-            val response = apiService?.getTickets()
-            if (response != null) {
-                val domainList = response.map { it.toDomain() }
-                _tickets.value = domainList
-                Result.success(domainList)
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.getMyWorkerVerification()
+            if (response.isSuccessful && response.data != null) {
+                val detail = response.data.verification?.toDomain()
+                _verificationInfo.value = detail
+                if (detail != null) {
+                    _workerProfile.value = _workerProfile.value.copy(verificationStatus = detail.status)
+                    tokenManager?.updateVerificationStatus(detail.status.name)
+                }
+                Result.success(detail)
             } else {
-                Result.failure(Exception("Không lấy được danh sách góp ý"))
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Không tải được trạng thái xác thực"))
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching tickets: ${e.message}")
-            Result.failure(e)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error fetching worker verification: ${t.message}")
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không tải được trạng thái xác thực"))
         }
     }
 
-    suspend fun fetchJobs(): Result<List<JobOpening>> = withContext(Dispatchers.IO) {
+    // ==================== 8-9. PUBLIC JOBS & APPLICATIONS ====================
+
+    /**
+     * Endpoint 8: GET /api/jobs (Root JSON { jobs, nextOffset, total, facets, overview })
+     */
+    suspend fun fetchJobs(
+        query: String? = null,
+        area: String? = null,
+        offset: Int = 0,
+        limit: Int = 20
+    ): Result<List<JobOpening>> = withContext(Dispatchers.IO) {
         try {
-            val response = apiService?.getJobListings()
-            if (response != null) {
-                val domainList = response.map { it.toDomain() }
-                _jobListings.value = domainList
-                Result.success(domainList)
-            } else {
-                Result.failure(Exception("Không lấy được danh sách việc làm"))
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching jobs: ${e.message}")
-            Result.failure(e)
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.getPublicJobs(q = query, area = area, offset = offset, limit = limit)
+            val domainList = response.jobs.map { it.toDomain() }
+            _jobListings.value = domainList
+            Result.success(domainList)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error fetching jobs: ${t.message}")
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không lấy được danh sách việc làm"))
         }
     }
 
-    suspend fun fetchCandidates(): Result<List<CtvCandidate>> = withContext(Dispatchers.IO) {
-        _ctvCandidates.value = emptyList()
-        Result.success(emptyList())
+    /**
+     * Endpoint 9: POST /api/public/jobs/{slug}/applications (Root JSON { trackingCode, status })
+     * Sends Idempotency-Key via HTTP Header per contract Section 6.2 & 14.3.B
+     */
+    suspend fun applyToJob(
+        slug: String,
+        fullName: String,
+        phone: String,
+        experience: String? = null,
+        dateOfBirth: String? = null,
+        gender: String? = null,
+        consent: Boolean = true
+    ): Result<JobApplicationResponse> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val idempotencyKey = UUID.randomUUID().toString()
+            val req = JobApplicationRequest(
+                fullName = fullName,
+                phone = phone,
+                experience = experience,
+                dateOfBirth = dateOfBirth,
+                gender = gender,
+                consent = consent
+            )
+            val response = api.applyPublicJob(
+                slug = slug,
+                idempotencyKey = idempotencyKey,
+                req = req
+            )
+            Result.success(response)
+        } catch (t: Throwable) {
+            Result.failure(ApiErrorParser.parseThrowable(t, "Nộp hồ sơ ứng tuyển thất bại"))
+        }
     }
 
-    suspend fun fetchBodOverview(): Result<BodOverviewStats> = withContext(Dispatchers.IO) {
-        Result.failure(Exception("Không có quyền truy cập dữ liệu ban giám đốc"))
+    // ==================== 10-11. ATTENDANCE & GPS CHECK-IN ====================
+
+    /**
+     * Endpoint 10: GET /api/worker/attendance (Root JSON { items, total })
+     */
+    suspend fun fetchAttendance(month: Int? = null, year: Int? = null): Result<List<AttendanceDay>> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.getWorkerAttendance(month = month, year = year)
+            val domainList = response.items.map { it.toDomain() }
+            _attendanceList.value = domainList
+            Result.success(domainList)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error fetching attendance: ${t.message}")
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không lấy được dữ liệu chấm công"))
+        }
     }
 
-    // ==================== WORKER ACTIONS ====================
+    /**
+     * Endpoint 11: POST /api/worker/checkins/events (Mobile Envelope)
+     * Header: Idempotency-Key: <UUID>
+     */
+    suspend fun submitCheckInEvent(
+        action: String, // "CHECK_IN" | "CHECK_OUT"
+        latitude: Double,
+        longitude: Double,
+        accuracyMeters: Float
+    ): Result<CheckInEventData> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val idempotencyKey = UUID.randomUUID().toString()
+            val req = CheckInEventRequest(
+                workDate = HrpFormatters.todayDateIso(),
+                action = action,
+                gpsLatitude = latitude,
+                gpsLongitude = longitude,
+                gpsAccuracyMeters = accuracyMeters,
+                capturedAt = HrpFormatters.nowIsoTimestamp()
+            )
+            val response = api.submitCheckInEvent(
+                idempotencyKey = idempotencyKey,
+                req = req
+            )
+            val data = response.data
+            if (response.isSuccessful && data != null) {
+                // Refresh attendance history after check-in/out event
+                fetchAttendance()
+                Result.success(data)
+            } else {
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Chấm công thất bại từ máy chủ"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(ApiErrorParser.parseThrowable(t, "Lỗi chấm công qua GPS"))
+        }
+    }
 
     suspend fun performCheckIn(
         site: String = "",
@@ -320,50 +586,125 @@ class HrpRepository(
         if (latitude == null || longitude == null) {
             return@withContext Result.failure(Exception("Yêu cầu định vị GPS thực tế từ thiết bị để chấm công."))
         }
-
-        try {
-            val req = CheckInRequest(
-                latitude = latitude,
-                longitude = longitude,
-                accuracy = accuracy,
-                factorySite = site,
-                note = "Vào ca qua định vị phần cứng GPS"
+        val eventResult = submitCheckInEvent(
+            action = "CHECK_IN",
+            latitude = latitude,
+            longitude = longitude,
+            accuracyMeters = accuracy ?: 15.0f
+        )
+        eventResult.map { eventData ->
+            val today = HrpFormatters.todayDateIso()
+            _attendanceList.value.firstOrNull { it.dateString == today } ?: AttendanceDay(
+                id = eventData.attendanceId.ifBlank { UUID.randomUUID().toString() },
+                dateString = today,
+                dayOfWeek = today,
+                shiftName = "Ca tiêu chuẩn",
+                checkInTime = eventData.recordedAt,
+                checkOutTime = null,
+                standardHours = 8.0,
+                otHours = 0.0,
+                locationVerified = eventData.geofenceResult.equals("INSIDE", ignoreCase = true),
+                factorySite = site.ifBlank { _workerProfile.value.factoryLocation.ifBlank { "Nhà máy HRP" } },
+                status = AttendanceStatus.PENDING,
+                note = "Chấm công GPS",
+                geofenceResult = eventData.geofenceResult,
+                riskFlag = false
             )
-            val apiResult = apiService?.checkIn(req)
-            val dayResult = apiResult?.attendance?.toDomain()
-
-            if (dayResult != null) {
-                val current = _attendanceList.value.toMutableList()
-                val existingIndex = current.indexOfFirst { it.dateString == dayResult.dateString }
-                if (existingIndex >= 0) {
-                    current[existingIndex] = dayResult
-                } else {
-                    current.add(0, dayResult)
-                }
-                _attendanceList.value = current
-                Result.success(dayResult)
-            } else {
-                Result.failure(Exception(apiResult?.message ?: "Chấm công thất bại từ máy chủ"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi chấm công: ${e.localizedMessage ?: e.message}"))
         }
     }
 
     suspend fun performCheckOut(
         latitude: Double? = null,
-        longitude: Double? = null
+        longitude: Double? = null,
+        accuracy: Float? = null
     ): Result<AttendanceDay> = withContext(Dispatchers.IO) {
         if (latitude == null || longitude == null) {
             return@withContext Result.failure(Exception("Yêu cầu định vị GPS thực tế từ thiết bị để kết thúc ca."))
         }
-
-        try {
-            val apiResult = apiService?.checkOut(CheckOutRequest(latitude, longitude))
-            Result.failure(Exception(apiResult?.message ?: "Chức năng tan ca chưa có phản hồi từ máy chủ"))
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi máy chủ khi tan ca: ${e.localizedMessage ?: e.message}"))
+        val eventResult = submitCheckInEvent(
+            action = "CHECK_OUT",
+            latitude = latitude,
+            longitude = longitude,
+            accuracyMeters = accuracy ?: 15.0f
+        )
+        eventResult.map { eventData ->
+            val today = HrpFormatters.todayDateIso()
+            _attendanceList.value.firstOrNull { it.dateString == today } ?: AttendanceDay(
+                id = eventData.attendanceId.ifBlank { UUID.randomUUID().toString() },
+                dateString = today,
+                dayOfWeek = today,
+                shiftName = "Ca tiêu chuẩn",
+                checkInTime = null,
+                checkOutTime = eventData.recordedAt,
+                standardHours = 8.0,
+                otHours = 0.0,
+                locationVerified = eventData.geofenceResult.equals("INSIDE", ignoreCase = true),
+                factorySite = _workerProfile.value.factoryLocation.ifBlank { "Nhà máy HRP" },
+                status = AttendanceStatus.APPROVED,
+                note = "Tan ca GPS",
+                geofenceResult = eventData.geofenceResult,
+                riskFlag = false
+            )
         }
+    }
+
+    // ==================== 12-13. FEEDBACK (GÓP Ý) ====================
+
+    /**
+     * Endpoint 13: GET /api/feedback/mine
+     */
+    suspend fun fetchMyFeedback(page: Int = 1, limit: Int = 20): Result<List<FeedbackItem>> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.getMyFeedback(page = page, limit = limit)
+            if (response.isSuccessful && response.data != null) {
+                val feedbackDomain = response.data.items.map { it.toDomain() }
+                val ticketDomain = response.data.items.map { it.toTicketItem() }
+                _feedbackList.value = feedbackDomain
+                _tickets.value = ticketDomain
+                Result.success(feedbackDomain)
+            } else {
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Không lấy được danh sách góp ý"))
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error fetching feedback: ${t.message}")
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không lấy được danh sách góp ý"))
+        }
+    }
+
+    /**
+     * Endpoint 12: POST /api/feedback
+     */
+    suspend fun submitFeedback(category: FeedbackCategory, content: String): Result<FeedbackItem> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val req = FeedbackSubmitRequest(
+                category = category.code,
+                content = content
+            )
+            val response = api.submitFeedback(req)
+            val data = response.data
+            if (response.isSuccessful && data != null) {
+                val item = FeedbackItem(
+                    id = data.feedbackId,
+                    category = category,
+                    content = content,
+                    status = data.status,
+                    createdAt = data.submittedAt ?: HrpFormatters.todayDateIso()
+                )
+                _feedbackList.value = listOf(item) + _feedbackList.value
+                fetchMyFeedback()
+                Result.success(item)
+            } else {
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Gửi góp ý thất bại"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không thể gửi góp ý"))
+        }
+    }
+
+    suspend fun fetchTickets(): Result<List<TicketItem>> = withContext(Dispatchers.IO) {
+        fetchMyFeedback().map { _tickets.value }
     }
 
     suspend fun createTicket(
@@ -373,29 +714,138 @@ class HrpRepository(
         amountVnd: Long? = null,
         requestedDays: String? = null
     ): Result<TicketItem> = withContext(Dispatchers.IO) {
-        try {
-            val req = CreateTicketRequest(
-                type = type.name,
-                title = title,
-                description = description,
-                amountVnd = amountVnd,
-                requestedDays = requestedDays
+        val category = when (type) {
+            TicketType.ADVANCE_SALARY -> FeedbackCategory.SALARY_BENEFITS
+            TicketType.TIMESHEET_DISPUTE -> FeedbackCategory.SALARY_BENEFITS
+            TicketType.LEAVE_REQUEST -> FeedbackCategory.WORK_ENVIRONMENT
+            TicketType.OTHER -> FeedbackCategory.SUGGESTION
+        }
+        val combinedContent = if (title.isNotBlank()) "[$title] $description" else description
+        submitFeedback(category = category, content = combinedContent).map {
+            _tickets.value.firstOrNull() ?: TicketItem(
+                id = it.id,
+                code = "FB-${it.id.takeLast(4).uppercase()}",
+                type = type,
+                title = category.label,
+                description = combinedContent,
+                createdDate = it.createdAt,
+                status = com.example.data.model.TicketStatus.PENDING,
+                requesterName = _workerProfile.value.fullName,
+                requesterCode = _workerProfile.value.employeeCode
             )
-            val apiResult = apiService?.createTicket(req)
-            val newTicket = apiResult?.toDomain()
-
-            if (newTicket != null) {
-                _tickets.value = listOf(newTicket) + _tickets.value
-                Result.success(newTicket)
-            } else {
-                Result.failure(Exception("Gửi yêu cầu thất bại từ máy chủ"))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Lỗi gửi yêu cầu: ${e.localizedMessage ?: e.message}"))
         }
     }
 
-    // ==================== DEFERRED / REMOVED HR & CTV ACTIONS ====================
+    // ==================== 14-16. DYNAMIC REFERRAL PROGRAM ====================
+
+    /**
+     * Endpoint 14: GET /api/referrals/program
+     */
+    suspend fun fetchReferralProgram(): Result<ReferralProgram> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.getReferralProgram()
+            if (response.isSuccessful && response.data != null) {
+                val program = response.data.resolvedProgram()
+                _referralProgram.value = program
+                Result.success(program)
+            } else {
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Không lấy được thông tin chương trình giới thiệu"))
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error fetching referral program: ${t.message}")
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không lấy được thông tin chương trình giới thiệu"))
+        }
+    }
+
+    /**
+     * Endpoint 15: POST /api/referrals
+     * Header: Idempotency-Key: <UUID>
+     */
+    suspend fun submitReferral(
+        referredName: String,
+        referredPhone: String,
+        jobInterest: String? = null,
+        consentToContact: Boolean
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val idempotencyKey = UUID.randomUUID().toString()
+            val req = ReferralSubmitRequest(
+                referredName = referredName,
+                referredPhone = referredPhone,
+                jobInterest = jobInterest?.takeIf { it.isNotBlank() },
+                consentToContact = consentToContact
+            )
+            val response = api.submitReferral(
+                idempotencyKey = idempotencyKey,
+                req = req
+            )
+            if (response.isSuccessful) {
+                val refId = response.data?.referral?.id ?: ""
+                fetchMyReferrals()
+                Result.success(refId)
+            } else {
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Gửi lời giới thiệu thất bại"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không thể gửi thông tin giới thiệu"))
+        }
+    }
+
+    /**
+     * Endpoint 16: GET /api/referrals/mine
+     */
+    suspend fun fetchMyReferrals(page: Int = 1, limit: Int = 20): Result<List<ReferralItem>> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.getMyReferrals(page = page, limit = limit)
+            if (response.isSuccessful && response.data != null) {
+                val items = response.data.items.map { it.toDomain() }
+                _referralList.value = items
+                Result.success(items)
+            } else {
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Không tải được danh sách giới thiệu"))
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "Error fetching referrals: ${t.message}")
+            Result.failure(ApiErrorParser.parseThrowable(t, "Không tải được danh sách giới thiệu"))
+        }
+    }
+
+    // ==================== 17. PUSH DEVICE REGISTRATION ====================
+
+    /**
+     * Endpoint 17: POST /api/push/register-device
+     */
+    suspend fun registerDeviceToken(fcmToken: String): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
+            val response = api.registerDevice(DeviceRegistrationRequest(fcmToken = fcmToken, platform = "ANDROID"))
+            if (response.isSuccessful) {
+                Result.success(response.data?.registered ?: true)
+            } else {
+                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Đăng ký thiết bị nhận thông báo thất bại"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(ApiErrorParser.parseThrowable(t, "Đăng ký thiết bị nhận thông báo thất bại"))
+        }
+    }
+
+    // ==================== DEFERRED / REMOVED ACTIONS ====================
+
+    suspend fun fetchPayslip(): Result<PayslipSummary> = withContext(Dispatchers.IO) {
+        Result.failure(Exception("Phiếu lương tạm thời chưa khả dụng trong giai đoạn này"))
+    }
+
+    suspend fun fetchCandidates(): Result<List<CtvCandidate>> = withContext(Dispatchers.IO) {
+        _ctvCandidates.value = emptyList()
+        Result.success(emptyList())
+    }
+
+    suspend fun fetchBodOverview(): Result<BodOverviewStats> = withContext(Dispatchers.IO) {
+        Result.failure(Exception("Không có quyền truy cập dữ liệu ban giám đốc"))
+    }
 
     suspend fun approveTicket(ticketId: String, note: String): Result<TicketItem> = withContext(Dispatchers.IO) {
         Result.failure(Exception("Thao tác duyệt không hỗ trợ trên ứng dụng mobile"))

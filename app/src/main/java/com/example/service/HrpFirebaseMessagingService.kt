@@ -49,9 +49,8 @@ class HrpFirebaseMessagingService : FirebaseMessagingService() {
                     val api = ApiClient.getApiService(applicationContext)
                     api.registerDevice(
                         DeviceRegistrationRequest(
-                            token = token,
-                            deviceType = "ANDROID",
-                            model = "${Build.MANUFACTURER} ${Build.MODEL}"
+                            fcmToken = token,
+                            platform = "ANDROID"
                         )
                     )
                     Log.i(TAG, "Device token successfully registered with backend server.")
