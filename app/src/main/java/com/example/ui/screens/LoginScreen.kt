@@ -104,18 +104,23 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             // Branding Header
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(HrpNavyDark),
-                contentAlignment = Alignment.Center
+            Surface(
+                modifier = Modifier.size(width = 110.dp, height = 88.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White,
+                shadowElevation = 2.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, HrpSurfaceBorder)
             ) {
-                Image(
-                    painter = painterResource(id = R.drawable.hrp_logo),
-                    contentDescription = "HRP Logo",
-                    modifier = Modifier.size(68.dp)
-                )
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(10.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.hrp_logo),
+                        contentDescription = "HRP Logo",
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

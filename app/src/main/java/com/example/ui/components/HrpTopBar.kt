@@ -59,18 +59,22 @@ fun HrpTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(HrpNavyDark),
-                    contentAlignment = Alignment.Center
+                Surface(
+                    modifier = Modifier.size(width = 46.dp, height = 38.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, HrpPrimary.copy(alpha = 0.2f))
                 ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.hrp_logo),
-                        contentDescription = "HRP Logo",
-                        modifier = Modifier.size(34.dp)
-                    )
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(4.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.hrp_logo),
+                            contentDescription = "HRP Logo",
+                            modifier = Modifier.size(38.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(10.dp))
