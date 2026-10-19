@@ -15,13 +15,19 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.HrpNavyDark
 import com.example.ui.theme.HrpPrimary
 import com.example.ui.theme.HrpPrimarySoft
 import com.example.ui.theme.HrpSurface
@@ -35,6 +41,17 @@ fun HrpBottomBar(
     onTabSelected: (NavigationTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val configuration = LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp
+    // Calculate initial unified font size for the 5-tab row based on screen width,
+    // and automatically step down if any label overflows a single line.
+    val initialFontSizeSp = remember(screenWidthDp) {
+        ((screenWidthDp / 5f) / 7.2f).coerceIn(8.5f, 11.5f)
+    }
+    var unifiedLabelFontSizeSp by remember(screenWidthDp) {
+        mutableFloatStateOf(initialFontSizeSp)
+    }
+
     NavigationBar(
         modifier = modifier.testTag("hrp_bottom_bar"),
         containerColor = HrpSurface,
@@ -83,8 +100,17 @@ fun HrpBottomBar(
                 label = {
                     Text(
                         text = label,
-                        fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        fontSize = unifiedLabelFontSizeSp.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Visible,
+                        textAlign = TextAlign.Center,
+                        onTextLayout = { textLayoutResult ->
+                            if (textLayoutResult.didOverflowWidth && unifiedLabelFontSizeSp > 8.0f) {
+                                unifiedLabelFontSizeSp = (unifiedLabelFontSizeSp - 0.5f).coerceAtLeast(8.0f)
+                            }
+                        }
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
@@ -99,3 +125,4 @@ fun HrpBottomBar(
         }
     }
 }
+

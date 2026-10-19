@@ -36,12 +36,18 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AttendanceDay
@@ -507,31 +513,58 @@ private fun WorkerQuickActions(
     onLeaveRequest: () -> Unit,
     onDispute: () -> Unit
 ) {
+    var titleFontSizeSp by remember { mutableFloatStateOf(12f) }
+    var subtitleFontSizeSp by remember { mutableFloatStateOf(10f) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         ActionTile(
-            title = "Chế Độ & Lương",
+            title = "Chế Độ",
             subtitle = "Hỏi đáp, phản ánh",
             icon = Icons.Default.MonetizationOn,
             color = HrpPrimary,
+            titleFontSizeSp = titleFontSizeSp,
+            subtitleFontSizeSp = subtitleFontSizeSp,
+            onTitleOverflow = {
+                if (titleFontSizeSp > 9f) titleFontSizeSp = (titleFontSizeSp - 0.5f).coerceAtLeast(9f)
+            },
+            onSubtitleOverflow = {
+                if (subtitleFontSizeSp > 8f) subtitleFontSizeSp = (subtitleFontSizeSp - 0.5f).coerceAtLeast(8f)
+            },
             modifier = Modifier.weight(1f),
             onClick = onAdvanceSalary
         )
         ActionTile(
-            title = "Môi Trường Làm Việc",
+            title = "Môi Trường",
             subtitle = "An toàn, ca kíp",
             icon = Icons.Default.DateRange,
             color = HrpInfo,
+            titleFontSizeSp = titleFontSizeSp,
+            subtitleFontSizeSp = subtitleFontSizeSp,
+            onTitleOverflow = {
+                if (titleFontSizeSp > 9f) titleFontSizeSp = (titleFontSizeSp - 0.5f).coerceAtLeast(9f)
+            },
+            onSubtitleOverflow = {
+                if (subtitleFontSizeSp > 8f) subtitleFontSizeSp = (subtitleFontSizeSp - 0.5f).coerceAtLeast(8f)
+            },
             modifier = Modifier.weight(1f),
             onClick = onLeaveRequest
         )
         ActionTile(
-            title = "Khiếu Nại Công",
+            title = "Khiếu Nại",
             subtitle = "Sai giờ, quên quẹt",
             icon = Icons.Default.Timer,
             color = HrpWarning,
+            titleFontSizeSp = titleFontSizeSp,
+            subtitleFontSizeSp = subtitleFontSizeSp,
+            onTitleOverflow = {
+                if (titleFontSizeSp > 9f) titleFontSizeSp = (titleFontSizeSp - 0.5f).coerceAtLeast(9f)
+            },
+            onSubtitleOverflow = {
+                if (subtitleFontSizeSp > 8f) subtitleFontSizeSp = (subtitleFontSizeSp - 0.5f).coerceAtLeast(8f)
+            },
             modifier = Modifier.weight(1f),
             onClick = onDispute
         )
@@ -544,6 +577,10 @@ private fun ActionTile(
     subtitle: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     color: Color,
+    titleFontSizeSp: Float,
+    subtitleFontSizeSp: Float,
+    onTitleOverflow: () -> Unit,
+    onSubtitleOverflow: () -> Unit,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -554,7 +591,9 @@ private fun ActionTile(
         border = androidx.compose.foundation.BorderStroke(1.dp, HrpSurfaceBorder)
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
@@ -569,13 +608,30 @@ private fun ActionTile(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = title,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
-                maxLines = 1
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = titleFontSizeSp.sp
+                ),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Visible,
+                onTextLayout = { if (it.didOverflowWidth) onTitleOverflow() }
             )
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(color = HrpTextSecondary, fontSize = 10.sp),
-                maxLines = 1
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = HrpTextSecondary,
+                    fontSize = subtitleFontSizeSp.sp
+                ),
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Visible,
+                onTextLayout = { if (it.didOverflowWidth) onSubtitleOverflow() }
             )
         }
     }
