@@ -25,10 +25,10 @@ import com.example.data.api.model.ReferralSubmitWrapper
 import com.example.data.api.model.RegisterData
 import com.example.data.api.model.RegisterRequest
 import com.example.data.api.model.WorkerAttendanceRootResponse
-import com.example.data.api.model.WorkerProfileResponse
 import com.example.data.api.model.WorkerVerificationMeData
 import com.example.data.api.model.WorkerVerificationRequest
 import com.example.data.api.model.WorkerVerificationSubmitData
+import com.example.data.api.model.WorkersMeResponse
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -38,7 +38,7 @@ import retrofit2.http.Query
 
 /**
  * Retrofit API Service for HR Partner (HRP) Backend
- * Strictly aligned with the 17 endpoints in web-android-contract.md (SHA: 300C6F10...)
+ * Strictly aligned with the 17 endpoints in web-android-contract.md (SHA: 6D8755F8...)
  */
 interface HrpApiService {
 
@@ -101,10 +101,10 @@ interface HrpApiService {
     suspend fun getMyWorkerVerification(): ApiResponse<WorkerVerificationMeData>
 
     /**
-     * GET /api/workers/me (Envelope)
+     * GET /api/workers/me (Root JSON { worker, assignment, mobileAccess } or Envelope)
      */
     @GET("workers/me")
-    suspend fun getProfile(): ApiResponse<WorkerProfileResponse>
+    suspend fun getProfile(): WorkersMeResponse
 
     // ==================== 8-9. PUBLIC JOBS & APPLICATIONS ====================
 

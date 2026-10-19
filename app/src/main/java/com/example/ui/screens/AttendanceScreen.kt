@@ -79,8 +79,11 @@ fun AttendanceScreen(
         attendanceList.filter { it.status == selectedFilter }
     }
 
-    val isApprovedWorker = workerProfile == null || workerProfile.verificationStatus == VerificationStatus.APPROVED
-    val siteSubtitle = workerProfile?.factoryLocation?.takeIf { it.isNotBlank() } ?: "Dự án HRP được phân công"
+    val canCheckIn = workerProfile?.canCheckIn == true
+    val isSiteGpsReady = workerProfile?.hasConfiguredSiteGps == true && !(workerProfile.siteGeofenceNotConfigured)
+    val isActionEnabled = canCheckIn && isSiteGpsReady
+    val siteSubtitle = workerProfile?.factoryLocation?.takeIf { it.isNotBlank() }
+        ?: "Chưa có dự án được phân công (ACTIVE)"
 
     LazyColumn(
         modifier = modifier
@@ -95,13 +98,13 @@ fun AttendanceScreen(
         item {
             AttendanceSummaryBanner(
                 siteSubtitle = siteSubtitle,
-                isApprovedWorker = isApprovedWorker,
+                canCheckIn = canCheckIn,
+                isSiteGpsReady = isSiteGpsReady,
                 totalDays = attendanceList.size,
                 approvedDays = attendanceList.count { it.status == AttendanceStatus.APPROVED },
                 totalOtHours = attendanceList.sumOf { it.otHours },
                 onCheckIn = onCheckIn,
-                onCheckOut = onCheckOut,
-                onOpenWorkerVerification = onOpenWorkerVerification
+                onCheckOut = onCheckOut
             )
         }
 
@@ -181,10 +184,10 @@ fun AttendanceScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (isApprovedWorker) {
-                                "Chưa có bản ghi chấm công nào trong kỳ này."
-                            } else {
-                                "Vui lòng hoàn tất xác thực công nhân HRP để bắt đầu chấm công GPS và xem bảng công."
+                            text = when {
+                                isActionEnabled -> "Chưa có bản ghi chấm công nào trong kỳ này."
+                                canCheckIn && !isSiteGpsReady -> "Địa điểm làm việc (Site) của dự án chưa được Admin xác nhận tọa độ GPS chuẩn nên chưa thể ghi nhận chấm công."
+                                else -> "Tài khoản cần được Quản trị viên HRP liên kết hồ sơ công nhân và phân công dự án ACTIVE để bắt đầu chấm công GPS."
                             },
                             color = HrpTextSecondary,
                             fontSize = 13.sp
@@ -208,14 +211,31 @@ fun AttendanceScreen(
 @Composable
 private fun AttendanceSummaryBanner(
     siteSubtitle: String,
-    isApprovedWorker: Boolean,
+    canCheckIn: Boolean,
+    isSiteGpsReady: Boolean,
     totalDays: Int,
     approvedDays: Int,
     totalOtHours: Double,
     onCheckIn: () -> Unit,
-    onCheckOut: () -> Unit,
-    onOpenWorkerVerification: () -> Unit
+    onCheckOut: () -> Unit
 ) {
+    val isActionEnabled = canCheckIn && isSiteGpsReady
+    val badgeBg = when {
+        isActionEnabled -> HrpSuccess.copy(alpha = 0.2f)
+        canCheckIn && !isSiteGpsReady -> HrpError.copy(alpha = 0.2f)
+        else -> HrpWarning.copy(alpha = 0.2f)
+    }
+    val badgeColor = when {
+        isActionEnabled -> HrpSuccess
+        canCheckIn && !isSiteGpsReady -> HrpError
+        else -> HrpWarning
+    }
+    val badgeLabel = when {
+        isActionEnabled -> "ĐỦ ĐIỀU KIỆN"
+        canCheckIn && !isSiteGpsReady -> "CHỜ XÁC NHẬN SITE"
+        else -> "CHƯA MỞ QUYỀN"
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -243,21 +263,19 @@ private fun AttendanceSummaryBanner(
                             color = Color.White,
                             fontWeight = FontWeight.Bold
                         ),
-                        maxLines = 1
+                        maxLines = 2
                     )
                 }
 
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (isApprovedWorker) HrpSuccess.copy(alpha = 0.2f) else HrpWarning.copy(alpha = 0.2f)
-                        )
+                        .background(badgeBg)
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = if (isApprovedWorker) "ĐỦ ĐIỀU KIỆN" else "CHƯA XÁC THỰC",
-                        color = if (isApprovedWorker) HrpSuccess else HrpWarning,
+                        text = badgeLabel,
+                        color = badgeColor,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
                     )
@@ -291,7 +309,7 @@ private fun AttendanceSummaryBanner(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            if (isApprovedWorker) {
+            if (isActionEnabled) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -317,16 +335,35 @@ private fun AttendanceSummaryBanner(
                     }
                 }
             } else {
-                OutlinedButton(
-                    onClick = onOpenWorkerVerification,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, HrpPrimary)
+                val lockExplanation = if (canCheckIn && !isSiteGpsReady) {
+                    "Tạm khóa Vào ca / Tan ca: Địa điểm làm việc (Site) của dự án chưa được Admin xác nhận tọa độ GPS chuẩn (SITE_GEOFENCE_NOT_CONFIGURED)."
+                } else {
+                    "Thao tác chấm công bị khóa (canCheckIn = false): Tài khoản cần được Admin liên kết hồ sơ công nhân và có phân công dự án đang hoạt động (ACTIVE)."
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(HrpNavySurface)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(imageVector = Icons.Default.VerifiedUser, contentDescription = null, tint = HrpPrimary, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Xác thực công nhân HRP để mở khóa chấm công", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.VerifiedUser,
+                            contentDescription = null,
+                            tint = badgeColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = lockExplanation,
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
                 }
             }
         }

@@ -282,8 +282,7 @@ class HrpViewModel(
     fun refreshVerificationAndProfile() {
         viewModelScope.launch {
             repository.fetchProfile()
-            repository.fetchMyVerification()
-            repository.fetchPublicProjects()
+            repository.fetchAttendance()
         }
     }
 
@@ -327,14 +326,17 @@ class HrpViewModel(
             when (tab) {
                 NavigationTab.HOME -> {
                     repository.fetchProfile()
-                    repository.fetchMyVerification()
+                    repository.fetchAttendance()
                 }
                 NavigationTab.JOBS -> repository.fetchJobs()
-                NavigationTab.ATTENDANCE -> repository.fetchAttendance()
+                NavigationTab.ATTENDANCE -> {
+                    repository.fetchProfile()
+                    repository.fetchAttendance()
+                }
                 NavigationTab.FEEDBACK -> repository.fetchMyFeedback()
                 NavigationTab.REFERRAL -> {
                     repository.fetchReferralProgram()
-                    if (workerProfile.value.verificationStatus == VerificationStatus.APPROVED) {
+                    if (workerProfile.value.canCheckIn || workerProfile.value.hasActiveAssignment || workerProfile.value.verificationStatus == VerificationStatus.APPROVED) {
                         repository.fetchMyReferrals()
                     }
                 }
@@ -414,16 +416,25 @@ class HrpViewModel(
     // ==================== FEEDBACK / TICKETS ====================
 
     fun submitFeedback(category: FeedbackCategory, content: String) {
-        if (content.isBlank()) {
+        if (!workerProfile.value.phoneVerified) {
+            _toastMessage.value = "Tài khoản chưa xác thực số điện thoại qua OTP. Cần xác thực OTP trước khi gửi góp ý."
+            return
+        }
+        val trimmed = content.trim()
+        if (trimmed.isBlank()) {
             _toastMessage.value = "Vui lòng nhập nội dung góp ý"
             return
         }
+        if (trimmed.length < 10) {
+            _toastMessage.value = "Nội dung góp ý phải có ít nhất 10 ký tự"
+            return
+        }
         viewModelScope.launch {
-            val result = repository.submitFeedback(category, content.trim())
-            _showCreateTicketDialog.value = false
-            _showAdvanceSalaryDialog.value = false
+            val result = repository.submitFeedback(category, trimmed)
 
             result.onSuccess {
+                _showCreateTicketDialog.value = false
+                _showAdvanceSalaryDialog.value = false
                 _toastMessage.value = "Đã gửi góp ý (${category.label}) thành công!"
             }.onFailure {
                 _toastMessage.value = "Lỗi gửi góp ý: ${it.message}"
@@ -438,12 +449,16 @@ class HrpViewModel(
         amountVnd: Long? = null,
         requestedDays: String? = null
     ) {
+        if (!workerProfile.value.phoneVerified) {
+            _toastMessage.value = "Tài khoản chưa xác thực số điện thoại qua OTP. Cần xác thực OTP trước khi gửi góp ý."
+            return
+        }
         viewModelScope.launch {
             val result = repository.createTicket(type, title, description, amountVnd, requestedDays)
-            _showCreateTicketDialog.value = false
-            _showAdvanceSalaryDialog.value = false
 
             result.onSuccess {
+                _showCreateTicketDialog.value = false
+                _showAdvanceSalaryDialog.value = false
                 _toastMessage.value = "Đã gửi yêu cầu ${type.label} thành công!"
             }.onFailure {
                 _toastMessage.value = "Lỗi khi gửi yêu cầu: ${it.message}"

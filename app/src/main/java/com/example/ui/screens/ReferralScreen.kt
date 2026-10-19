@@ -72,6 +72,21 @@ import com.example.ui.theme.HrpSurfaceSubtle
 import com.example.ui.theme.HrpTextSecondary
 import com.example.ui.theme.HrpWarning
 
+private fun formatReferralBlockedReason(blockedReason: String?, isProgramEnabled: Boolean): String {
+    return when (blockedReason?.uppercase()) {
+        "PROGRAM_CLOSED" -> "Chương trình giới thiệu ứng viên hiện đang đóng (Chưa mở). Biểu mẫu sẽ tự động kích hoạt khi Quản trị viên HRP công bố chính sách."
+        "AUTH_REQUIRED" -> "Vui lòng đăng nhập bằng tài khoản Người lao động HRP để tham gia chương trình giới thiệu."
+        "WORKER_NOT_VERIFIED" -> "Tài khoản chưa được Quản trị viên HRP liên kết với hồ sơ công nhân chính thức."
+        "NO_ACTIVE_ASSIGNMENT" -> "Chỉ Công nhân HRP đã được Admin liên kết và đang có phân công dự án hoạt động (ACTIVE) mới đủ điều kiện gửi giới thiệu."
+        else -> blockedReason?.takeIf { it.isNotBlank() }
+            ?: if (!isProgramEnabled) {
+                "Chính sách giới thiệu ứng viên đang trong quá trình hoàn thiện và phê duyệt bởi Quản trị viên HRP. Hệ thống sẽ kích hoạt khi chính sách chính thức được công bố."
+            } else {
+                "Chỉ Công nhân HRP đã được Admin liên kết hồ sơ và đang có phân công dự án hoạt động (ACTIVE) mới đủ điều kiện gửi lời giới thiệu."
+            }
+    }
+}
+
 @Composable
 fun ReferralScreen(
     program: ReferralProgram? = null,
@@ -83,8 +98,9 @@ fun ReferralScreen(
     modifier: Modifier = Modifier
 ) {
     val isProgramEnabled = program?.isEnabled == true
-    val canSubmit = isProgramEnabled && (program?.canSubmit == true)
-    val isApprovedWorker = workerProfile?.verificationStatus == VerificationStatus.APPROVED
+    val isEligibleWorker = workerProfile == null || (workerProfile.canCheckIn || workerProfile.hasActiveAssignment)
+    val canSubmit = isProgramEnabled && (program?.canSubmit == true) && isEligibleWorker
+    val blockedExplanation = formatReferralBlockedReason(program?.blockedReason, isProgramEnabled)
 
     var referredName by remember { mutableStateOf("") }
     var referredPhone by remember { mutableStateOf("") }
@@ -157,8 +173,7 @@ fun ReferralScreen(
                             program?.rewardPolicyDescription?.takeIf { it.isNotBlank() }
                                 ?: "Chương trình giới thiệu người làm đang mở theo chính sách phê duyệt của Quản trị viên HRP."
                         } else {
-                            program?.blockedReason?.takeIf { it.isNotBlank() }
-                                ?: "Chính sách giới thiệu ứng viên đang trong quá trình hoàn thiện và phê duyệt bởi Quản trị viên HRP. Hệ thống sẽ kích hoạt khi chính sách chính thức được công bố."
+                            blockedExplanation
                         },
                         color = Color.White.copy(alpha = 0.85f),
                         fontSize = 12.sp,
@@ -218,7 +233,7 @@ fun ReferralScreen(
                         icon = Icons.Default.People,
                         title = "Điều kiện người giới thiệu & sự đồng thuận",
                         description = program?.eligibilityCriteria?.takeIf { it.isNotBlank() }
-                            ?: "Chỉ dành cho Công nhân HRP đã xác thực và đang có phân công làm việc. Người giới thiệu phải xác nhận ứng viên đã đồng ý để HRP liên hệ (App không tự ứng tuyển thay)."
+                            ?: "Chỉ dành cho Công nhân HRP đã được Admin liên kết hồ sơ và đang có phân công làm việc ACTIVE. Người giới thiệu phải xác nhận ứng viên đã đồng ý để HRP liên hệ (App không tự ứng tuyển thay)."
                     )
 
                     if (!program?.termsAndConditions.isNullOrBlank()) {
@@ -270,8 +285,7 @@ fun ReferralScreen(
                                 color = HrpNavyDark
                             )
                             Text(
-                                text = program?.blockedReason?.takeIf { it.isNotBlank() }
-                                    ?: "Biểu mẫu gửi lời giới thiệu sẽ tự động hiển thị ngay khi Quản trị viên HRP kích hoạt chính sách.",
+                                text = blockedExplanation,
                                 color = HrpTextSecondary,
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
@@ -304,22 +318,11 @@ fun ReferralScreen(
                         }
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = program?.blockedReason?.takeIf { it.isNotBlank() }
-                                ?: "Chức năng gửi lời giới thiệu chỉ áp dụng cho Công nhân HRP đã được xác thực (APPROVED) và đang có phân công làm việc hoạt động.",
+                            text = blockedExplanation,
                             color = HrpTextSecondary,
                             fontSize = 12.sp,
                             lineHeight = 16.sp
                         )
-                        if (!isApprovedWorker) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            OutlinedButton(
-                                onClick = onOpenWorkerVerification,
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Thực hiện xác thực công nhân HRP", fontWeight = FontWeight.Bold, color = HrpPrimary)
-                            }
-                        }
                     }
                 }
             } else {
@@ -462,10 +465,11 @@ private fun ReferralHistoryCard(
 ) {
     val (statusLabel, statusColor) = when (item.status.uppercase()) {
         "PAID" -> Pair("Đã chi trả thưởng", HrpSuccess)
-        "REWARD_APPROVED" -> Pair("Đã duyệt thưởng", HrpSuccess)
+        "APPROVED", "REWARD_APPROVED" -> Pair("Đã duyệt thưởng", HrpSuccess)
         "QUALIFIED" -> Pair("Đạt điều kiện", HrpInfo)
-        "IN_REVIEW" -> Pair("Đang liên hệ / đối soát", HrpWarning)
+        "UNDER_REVIEW", "IN_REVIEW" -> Pair("Đang liên hệ / đối soát", HrpWarning)
         "REJECTED" -> Pair("Không đạt điều kiện", HrpError)
+        "EXPIRED" -> Pair("Đã hết hạn", HrpTextSecondary)
         else -> Pair("Đã tiếp nhận", HrpPrimary)
     }
 

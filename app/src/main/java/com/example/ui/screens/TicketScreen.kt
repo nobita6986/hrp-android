@@ -62,6 +62,7 @@ import com.example.ui.theme.HrpWarning
 @Composable
 fun TicketScreen(
     tickets: List<TicketItem>,
+    phoneVerified: Boolean = true,
     onCreateTicketClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -89,6 +90,39 @@ fun TicketScreen(
                     pending = tickets.count { it.status == TicketStatus.PENDING || it.status == TicketStatus.HR_APPROVED },
                     onCreateTicket = onCreateTicketClick
                 )
+            }
+
+            // OTP Phone Verification Required Notice when phoneVerified=false
+            if (!phoneVerified) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("feedback_otp_required_banner"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = HrpSurface),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, HrpWarning.copy(alpha = 0.6f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = "Yêu cầu xác thực số điện thoại qua OTP (phoneVerified = false)",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = HrpNavyDark
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Tài khoản của bạn chưa xác thực số điện thoại bằng mã OTP nên chưa thể gửi góp ý mới lên máy chủ. Hệ thống không giả lập gửi thành công khi chưa xác thực OTP.",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = HrpTextSecondary,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp
+                                )
+                            )
+                        }
+                    }
+                }
             }
 
             // Filter chips

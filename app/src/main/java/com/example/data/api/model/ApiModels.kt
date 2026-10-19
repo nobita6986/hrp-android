@@ -15,6 +15,7 @@ import com.example.data.model.TicketItem
 import com.example.data.model.TicketStatus
 import com.example.data.model.TicketType
 import com.example.data.model.VerificationStatus
+import com.example.data.model.WorkerAssignmentSite
 import com.example.data.model.WorkerProfile
 import com.example.data.model.WorkerVerificationInfo
 import com.squareup.moshi.Json
@@ -92,7 +93,10 @@ object ApiErrorParser {
                         )
                     }
                     // Fallback for legacy root JSON errors: { "error": "...", "message": "...", "code": "..." }
-                    val topCode = root.optString("code", "").ifBlank { mapHttpCodeToDefaultErrorCode(httpCode) }
+                    val topCode = root.optString("code", "").ifBlank {
+                        root.optString("error", "").takeIf { it.all { ch -> ch.isUpperCase() || ch == '_' } }
+                            ?: mapHttpCodeToDefaultErrorCode(httpCode)
+                    }
                     val topMsg = root.optString("message", "").ifBlank { root.optString("error", "") }.takeIf { it.isNotBlank() }
                     return HrpApiException(
                         code = topCode,
@@ -134,7 +138,12 @@ object ApiErrorParser {
     fun translateErrorCode(code: String, serverMessage: String?, fallback: String): String {
         return when (code.uppercase()) {
             "UNAUTHORIZED" -> serverMessage ?: "Phiên đăng nhập đã hết hạn hoặc thông tin xác thực không hợp lệ."
-            "FORBIDDEN_NOT_VERIFIED" -> serverMessage ?: "Tài khoản chưa hoàn tất xác thực công nhân HRP để thực hiện chức năng này."
+            "FORBIDDEN_NOT_VERIFIED", "FORBIDDEN", "NOT_A_WORKER" ->
+                serverMessage ?: "Tài khoản chưa được Quản trị viên liên kết với hồ sơ Người lao động và phân công dự án (ACTIVE)."
+            "WORKER_PROFILE_NOT_FOUND", "WORKER_NOT_FOUND" ->
+                serverMessage ?: "Tài khoản chưa được Quản trị viên liên kết với hồ sơ Người lao động."
+            "PHONE_NOT_VERIFIED" ->
+                serverMessage ?: "Cần xác thực số điện thoại bằng mã OTP trước khi sử dụng tính năng Góp ý."
             "OTP_SERVICE_UNAVAILABLE" -> "Hệ thống gửi mã OTP đang bảo trì, vui lòng thử lại sau."
             "OTP_INVALID_OR_EXPIRED" -> serverMessage ?: "Mã OTP không chính xác hoặc đã hết hạn."
             "WORKER_VERIFICATION_PENDING" -> serverMessage ?: "Bạn đang có một hồ sơ xác thực chờ HR xét duyệt, không thể gửi trùng."
@@ -142,7 +151,12 @@ object ApiErrorParser {
             "REFERRAL_CONSENT_REQUIRED" -> serverMessage ?: "Vui lòng xác nhận người được giới thiệu đã đồng ý chia sẻ thông tin."
             "GEOFENCE_OUT_OF_RANGE" -> serverMessage ?: "Vị trí GPS của bạn nằm ngoài bán kính khu vực nhà máy/dự án được phân công."
             "GPS_ACCURACY_TOO_LOW" -> serverMessage ?: "Tín hiệu GPS quá yếu (sai số lớn). Vui lòng di chuyển ra khu vực thoáng và thử lại."
-            "SITE_GEOFENCE_NOT_CONFIGURED" -> serverMessage ?: "Địa điểm dự án chưa được cấu hình tọa độ chấm công trên hệ thống. Vui lòng báo quản lý."
+            "SITE_GEOFENCE_NOT_CONFIGURED" ->
+                serverMessage ?: "Địa điểm dự án (Site) chưa được Quản trị viên HRP xác nhận tọa độ & bán kính chấm công GPS."
+            "CHECK_IN_REQUIRED" -> serverMessage ?: "Cần ghi nhận Vào ca trước khi thực hiện Tan ca."
+            "ATTENDANCE_ACTION_ALREADY_RECORDED" -> serverMessage ?: "Thao tác chấm công này đã được ghi nhận trong ngày hôm nay."
+            "IDEMPOTENCY_REQUIRED", "IDEMPOTENCY_CONFLICT" ->
+                serverMessage ?: "Yêu cầu đang được xử lý hoặc bị trùng lặp. Vui lòng thử lại."
             "RATE_LIMIT_EXCEEDED" -> serverMessage ?: "Bạn thao tác quá nhanh. Vui lòng đợi ít phút trước khi thử lại."
             else -> serverMessage ?: fallback
         }
@@ -314,46 +328,185 @@ data class WorkerVerificationMeData(
     @param:Json(name = "verification") val verification: WorkerVerificationDetailDto? = null
 )
 
+@JsonClass(generateAdapter = true)
+data class WorkerAssignmentSiteDto(
+    @param:Json(name = "id") val id: String = "",
+    @param:Json(name = "name") val name: String? = null,
+    @param:Json(name = "latitude") val latitude: Double? = null,
+    @param:Json(name = "longitude") val longitude: Double? = null,
+    @param:Json(name = "geofenceRadiusMeters") val geofenceRadiusMeters: Int? = null,
+    @param:Json(name = "radiusMeters") val radiusMeters: Int? = null,
+    @param:Json(name = "geoConfirmedAt") val geoConfirmedAt: String? = null
+) {
+    val isGeoConfirmed: Boolean
+        get() = latitude != null && longitude != null && !geoConfirmedAt.isNullOrBlank()
+
+    fun toDomain(): WorkerAssignmentSite {
+        return WorkerAssignmentSite(
+            id = id,
+            name = name.orEmpty(),
+            latitude = latitude,
+            longitude = longitude,
+            radiusMeters = geofenceRadiusMeters ?: radiusMeters ?: 200
+        )
+    }
+}
+
+@JsonClass(generateAdapter = true)
+data class WorkerAssignmentDto(
+    @param:Json(name = "id") val id: String = "",
+    @param:Json(name = "assignmentId") val assignmentId: String? = null,
+    @param:Json(name = "projectId") val projectId: String = "",
+    @param:Json(name = "projectName") val projectName: String? = null,
+    @param:Json(name = "projectCode") val projectCode: String? = null,
+    @param:Json(name = "status") val status: String? = null,
+    @param:Json(name = "employeeCode") val employeeCode: String? = null,
+    @param:Json(name = "employmentType") val employmentType: String? = null,
+    @param:Json(name = "workSetting") val workSetting: String? = null,
+    @param:Json(name = "position") val position: String? = null,
+    @param:Json(name = "startDate") val startDate: String? = null,
+    @param:Json(name = "validFrom") val validFrom: String? = null,
+    @param:Json(name = "validTo") val validTo: String? = null,
+    @param:Json(name = "sites") val sites: List<WorkerAssignmentSiteDto>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class MobileAccessDto(
+    @param:Json(name = "phoneVerified") val phoneVerified: Boolean = false,
+    @param:Json(name = "hasActiveAssignment") val hasActiveAssignment: Boolean = false,
+    @param:Json(name = "canCheckIn") val canCheckIn: Boolean = false
+)
+
 /**
  * Worker Profile (GET /api/workers/me or nested in LoginResponse)
  */
 @JsonClass(generateAdapter = true)
 data class WorkerProfileResponse(
-    @param:Json(name = "id") val id: String = "",
-    @param:Json(name = "employeeCode") val employeeCode: String = "",
-    @param:Json(name = "fullName") val fullName: String = "",
-    @param:Json(name = "cccdNumber") val cccdNumber: String = "",
-    @param:Json(name = "phone") val phone: String = "",
-    @param:Json(name = "factoryLocation") val factoryLocation: String = "",
-    @param:Json(name = "projectCode") val projectCode: String = "",
-    @param:Json(name = "department") val department: String = "",
-    @param:Json(name = "position") val position: String = "",
-    @param:Json(name = "baseSalaryPerDayVnd") val baseSalaryPerDayVnd: Long = 0L,
-    @param:Json(name = "joinedDate") val joinedDate: String = "",
-    @param:Json(name = "bankAccount") val bankAccount: String = "",
-    @param:Json(name = "status") val status: String = "ACTIVE",
-    @param:Json(name = "phoneVerified") val phoneVerified: Boolean = false,
+    @param:Json(name = "id") val id: String? = "",
+    @param:Json(name = "employeeCode") val employeeCode: String? = "",
+    @param:Json(name = "fullName") val fullName: String? = "",
+    @param:Json(name = "cccdNumber") val cccdNumber: String? = "",
+    @param:Json(name = "phone") val phone: String? = "",
+    @param:Json(name = "factoryLocation") val factoryLocation: String? = "",
+    @param:Json(name = "projectCode") val projectCode: String? = "",
+    @param:Json(name = "department") val department: String? = "",
+    @param:Json(name = "position") val position: String? = "",
+    @param:Json(name = "baseSalaryPerDayVnd") val baseSalaryPerDayVnd: Long? = 0L,
+    @param:Json(name = "joinedDate") val joinedDate: String? = "",
+    @param:Json(name = "bankAccount") val bankAccount: String? = "",
+    @param:Json(name = "status") val status: String? = "ACTIVE",
+    @param:Json(name = "profileStatus") val profileStatus: String? = null,
+    @param:Json(name = "employmentStatus") val employmentStatus: String? = null,
+    @param:Json(name = "phoneVerified") val phoneVerified: Boolean? = null,
     @param:Json(name = "verificationStatus") val verificationStatus: String? = null,
-    @param:Json(name = "hasActiveAssignment") val hasActiveAssignment: Boolean = false
+    @param:Json(name = "hasActiveAssignment") val hasActiveAssignment: Boolean? = null,
+    @param:Json(name = "canCheckIn") val canCheckIn: Boolean? = null,
+    @param:Json(name = "assignment") val assignment: WorkerAssignmentDto? = null,
+    @param:Json(name = "mobileAccess") val mobileAccess: MobileAccessDto? = null
 ) {
-    fun toDomain(): WorkerProfile {
+    fun toDomain(
+        overrideAssignment: WorkerAssignmentDto? = null,
+        overrideMobileAccess: MobileAccessDto? = null
+    ): WorkerProfile {
+        val resolvedAssignment = overrideAssignment ?: assignment
+        val resolvedMobileAccess = overrideMobileAccess ?: mobileAccess
+
+        val resolvedPhoneVerified = resolvedMobileAccess?.phoneVerified ?: phoneVerified ?: false
+        val resolvedHasAssignment = resolvedMobileAccess?.hasActiveAssignment
+            ?: hasActiveAssignment
+            ?: (resolvedAssignment != null && (resolvedAssignment.status == null || resolvedAssignment.status.equals("ACTIVE", ignoreCase = true)))
+        val resolvedCanCheckIn = resolvedMobileAccess?.canCheckIn
+            ?: canCheckIn
+            ?: (resolvedHasAssignment || VerificationStatus.fromString(verificationStatus) == VerificationStatus.APPROVED)
+
+        val resolvedEmpCode = employeeCode?.takeIf { it.isNotBlank() }
+            ?: resolvedAssignment?.employeeCode.orEmpty()
+        val resolvedProjCode = projectCode?.takeIf { it.isNotBlank() }
+            ?: resolvedAssignment?.projectCode.orEmpty()
+        val resolvedProjName = resolvedAssignment?.projectName.orEmpty()
+        val rawSites = resolvedAssignment?.sites ?: emptyList()
+        val resolvedSites = rawSites.map { it.toDomain() }
+
+        val resolvedLocation = factoryLocation?.takeIf { it.isNotBlank() }
+            ?: listOfNotNull(
+                resolvedProjName.takeIf { it.isNotBlank() },
+                resolvedSites.firstOrNull()?.name?.takeIf { it.isNotBlank() }
+            ).joinToString(" • ")
+
+        val resolvedPosition = position?.takeIf { it.isNotBlank() }
+            ?: resolvedAssignment?.position.orEmpty()
+
+        // If assignment includes sites list, check whether at least one site has confirmed GPS coordinates
+        val hasSiteGps = if (resolvedAssignment?.sites != null) {
+            rawSites.any {
+                it.latitude != null && it.longitude != null &&
+                    (it.geoConfirmedAt != null || (it.geofenceRadiusMeters ?: it.radiusMeters ?: 0) > 0) &&
+                    (it.geoConfirmedAt == null || it.geoConfirmedAt.isNotBlank())
+            } && rawSites.any { it.isGeoConfirmed || (it.geoConfirmedAt == null && it.latitude != null && it.longitude != null) }
+        } else {
+            true
+        }
+
+        val resolvedVerificationStatus = when {
+            verificationStatus != null -> VerificationStatus.fromString(verificationStatus)
+            resolvedCanCheckIn || resolvedHasAssignment -> VerificationStatus.APPROVED
+            else -> VerificationStatus.NONE
+        }
+
+        val resolvedJoinedDate = joinedDate?.takeIf { it.isNotBlank() }
+            ?: resolvedAssignment?.startDate?.take(10)
+            ?: resolvedAssignment?.validFrom.orEmpty()
+
         return WorkerProfile(
-            id = id,
-            employeeCode = employeeCode,
-            fullName = fullName,
-            cccdNumber = cccdNumber,
-            phone = phone,
-            factoryLocation = factoryLocation,
-            projectCode = projectCode,
-            department = department,
-            position = position,
-            baseSalaryPerDayVnd = baseSalaryPerDayVnd,
-            joinedDate = joinedDate,
-            bankAccount = bankAccount,
-            status = status,
-            phoneVerified = phoneVerified,
-            verificationStatus = VerificationStatus.fromString(verificationStatus),
-            hasActiveAssignment = hasActiveAssignment
+            id = id.orEmpty(),
+            employeeCode = resolvedEmpCode,
+            fullName = fullName.orEmpty(),
+            cccdNumber = cccdNumber.orEmpty(),
+            phone = phone.orEmpty(),
+            factoryLocation = resolvedLocation,
+            projectCode = resolvedProjCode,
+            department = department.orEmpty(),
+            position = resolvedPosition,
+            baseSalaryPerDayVnd = baseSalaryPerDayVnd ?: 0L,
+            joinedDate = resolvedJoinedDate,
+            bankAccount = bankAccount.orEmpty(),
+            status = status ?: employmentStatus ?: profileStatus ?: "ACTIVE",
+            phoneVerified = resolvedPhoneVerified,
+            verificationStatus = resolvedVerificationStatus,
+            hasActiveAssignment = resolvedHasAssignment,
+            canCheckIn = resolvedCanCheckIn,
+            assignmentId = resolvedAssignment?.assignmentId ?: resolvedAssignment?.id?.takeIf { it.isNotBlank() },
+            projectId = resolvedAssignment?.projectId,
+            projectName = resolvedProjName,
+            sites = resolvedSites,
+            hasConfiguredSiteGps = hasSiteGps,
+            siteGeofenceNotConfigured = !hasSiteGps && resolvedHasAssignment && resolvedAssignment?.sites != null
+        )
+    }
+}
+
+/**
+ * Response DTO for GET /api/workers/me
+ * Supports both root JSON { worker, assignment, mobileAccess } and envelope { ok, data, error }
+ */
+@JsonClass(generateAdapter = true)
+data class WorkersMeResponse(
+    @param:Json(name = "ok") val ok: Boolean = true,
+    @param:Json(name = "worker") val worker: WorkerProfileResponse? = null,
+    @param:Json(name = "assignment") val assignment: WorkerAssignmentDto? = null,
+    @param:Json(name = "mobileAccess") val mobileAccess: MobileAccessDto? = null,
+    @param:Json(name = "data") val data: WorkerProfileResponse? = null,
+    @param:Json(name = "error") val error: ApiError? = null,
+    @param:Json(name = "message") val message: String? = null
+) {
+    val isSuccessful: Boolean
+        get() = ok && error == null && (worker != null || data != null)
+
+    fun resolvedProfile(): WorkerProfile? {
+        val baseWorker = worker ?: data
+        return baseWorker?.toDomain(
+            overrideAssignment = assignment ?: baseWorker.assignment,
+            overrideMobileAccess = mobileAccess ?: baseWorker.mobileAccess
         )
     }
 }
@@ -467,9 +620,16 @@ data class JobApplicationResponse(
  * Endpoint 10: GET /api/worker/attendance (Root JSON { items, total })
  */
 @JsonClass(generateAdapter = true)
+data class AttendanceTotalsDto(
+    @param:Json(name = "regularHours") val regularHours: Double? = 0.0,
+    @param:Json(name = "otHours") val otHours: Double? = 0.0
+)
+
+@JsonClass(generateAdapter = true)
 data class WorkerAttendanceRootResponse(
     @param:Json(name = "items") val items: List<AttendanceDayResponse> = emptyList(),
-    @param:Json(name = "total") val total: Int = 0
+    @param:Json(name = "total") val total: Int = 0,
+    @param:Json(name = "totals") val totals: AttendanceTotalsDto? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -477,27 +637,38 @@ data class AttendanceDayResponse(
     @param:Json(name = "id") val id: String,
     @param:Json(name = "workDate") val workDate: String? = null,
     @param:Json(name = "dateString") val dateString: String? = null,
-    @param:Json(name = "dayOfWeek") val dayOfWeek: String = "",
-    @param:Json(name = "shiftName") val shiftName: String = "Ca tiêu chuẩn",
+    @param:Json(name = "dayOfWeek") val dayOfWeek: String? = "",
+    @param:Json(name = "shift") val shift: String? = null,
+    @param:Json(name = "shiftName") val shiftName: String? = "Ca tiêu chuẩn",
     @param:Json(name = "checkInTime") val checkInTime: String? = null,
     @param:Json(name = "checkOutTime") val checkOutTime: String? = null,
-    @param:Json(name = "standardHours") val standardHours: Double = 8.0,
-    @param:Json(name = "otHours") val otHours: Double = 0.0,
+    @param:Json(name = "regularHours") val regularHours: Double? = null,
+    @param:Json(name = "standardHours") val standardHours: Double? = 8.0,
+    @param:Json(name = "otHours") val otHours: Double? = 0.0,
     @param:Json(name = "source") val source: String? = "GPS",
     @param:Json(name = "geofenceResult") val geofenceResult: String? = null,
     @param:Json(name = "riskFlag") val riskFlag: Boolean = false,
     @param:Json(name = "locationVerified") val locationVerified: Boolean? = null,
-    @param:Json(name = "factorySite") val factorySite: String = "Nhà máy HRP",
+    @param:Json(name = "factorySite") val factorySite: String? = "Nhà máy HRP",
     @param:Json(name = "status") val status: String? = null,
-    @param:Json(name = "note") val note: String = ""
+    @param:Json(name = "note") val note: String? = ""
 ) {
     fun toDomain(): AttendanceDay {
-        val resolvedDate = workDate ?: dateString ?: ""
+        val rawDate = workDate ?: dateString ?: ""
+        val resolvedDate = if (rawDate.length >= 10 && rawDate[4] == '-' && rawDate[7] == '-') {
+            rawDate.take(10)
+        } else {
+            rawDate
+        }
         val isInsideGeofence = locationVerified ?: (geofenceResult.equals("INSIDE", ignoreCase = true))
         val domainStatus = when {
             status != null -> when (status.uppercase()) {
-                "APPROVED" -> AttendanceStatus.APPROVED
-                "DISPUTED" -> AttendanceStatus.DISPUTED
+                "APPROVED", "APPENDED" -> if (riskFlag || geofenceResult.equals("OUTSIDE", ignoreCase = true)) {
+                    AttendanceStatus.DISPUTED
+                } else {
+                    AttendanceStatus.APPROVED
+                }
+                "DISPUTED", "REJECTED" -> AttendanceStatus.DISPUTED
                 "ABSENT" -> AttendanceStatus.ABSENT
                 else -> AttendanceStatus.PENDING
             }
@@ -509,16 +680,16 @@ data class AttendanceDayResponse(
         return AttendanceDay(
             id = id,
             dateString = resolvedDate,
-            dayOfWeek = dayOfWeek.ifBlank { resolvedDate },
-            shiftName = shiftName,
+            dayOfWeek = dayOfWeek?.takeIf { it.isNotBlank() } ?: resolvedDate,
+            shiftName = shift?.takeIf { it.isNotBlank() } ?: shiftName?.takeIf { it.isNotBlank() } ?: "Ca tiêu chuẩn",
             checkInTime = checkInTime,
             checkOutTime = checkOutTime,
-            standardHours = standardHours,
-            otHours = otHours,
+            standardHours = regularHours ?: standardHours ?: 8.0,
+            otHours = otHours ?: 0.0,
             locationVerified = isInsideGeofence,
-            factorySite = factorySite,
+            factorySite = factorySite?.takeIf { it.isNotBlank() } ?: "Nhà máy HRP",
             status = domainStatus,
-            note = note,
+            note = note.orEmpty(),
             geofenceResult = geofenceResult,
             riskFlag = riskFlag
         )
@@ -745,11 +916,40 @@ data class ReferralItemDto(
     @param:Json(name = "maskedReferredPhone") val maskedReferredPhone: String = "",
     @param:Json(name = "status") val status: String = "SUBMITTED",
     @param:Json(name = "benefitStatus") val benefitStatus: String = "NONE",
-    @param:Json(name = "benefitAmountVnd") val benefitAmountVnd: Long? = null,
+    @param:Json(name = "benefitAmountVnd") val benefitAmountVndRaw: String? = null,
     @param:Json(name = "submittedAt") val submittedAt: String? = null,
     @param:Json(name = "updatedAt") val updatedAt: String? = null
 ) {
+    val benefitAmountVnd: Long?
+        get() = benefitAmountVndRaw?.toLongOrNull()
+
+    constructor(
+        id: String,
+        maskedReferredName: String = "",
+        maskedReferredPhone: String = "",
+        status: String = "SUBMITTED",
+        benefitStatus: String = "NONE",
+        benefitAmountVnd: Long?,
+        submittedAt: String? = null,
+        updatedAt: String? = null
+    ) : this(
+        id = id,
+        maskedReferredName = maskedReferredName,
+        maskedReferredPhone = maskedReferredPhone,
+        status = status,
+        benefitStatus = benefitStatus,
+        benefitAmountVndRaw = benefitAmountVnd?.toString(),
+        submittedAt = submittedAt,
+        updatedAt = updatedAt
+    )
+
     fun toDomain(): ReferralItem {
+        val rawDate = submittedAt ?: ""
+        val formattedDate = if (rawDate.length >= 10 && rawDate[4] == '-' && rawDate[7] == '-') {
+            rawDate.take(10)
+        } else {
+            rawDate
+        }
         return ReferralItem(
             id = id,
             maskedReferredName = maskedReferredName,
@@ -757,7 +957,7 @@ data class ReferralItemDto(
             status = status,
             benefitStatus = benefitStatus,
             benefitAmountVnd = benefitAmountVnd,
-            submittedAt = submittedAt ?: "",
+            submittedAt = formattedDate,
             updatedAt = updatedAt
         )
     }

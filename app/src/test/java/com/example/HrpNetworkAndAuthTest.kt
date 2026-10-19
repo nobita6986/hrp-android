@@ -6,10 +6,15 @@ import com.example.data.api.model.ApiErrorParser
 import com.example.data.api.model.AttendanceDayResponse
 import com.example.data.api.model.FeedbackItemDto
 import com.example.data.api.model.JobOpeningResponse
+import com.example.data.api.model.MobileAccessDto
+import com.example.data.api.model.ReferralItemDto
 import com.example.data.api.model.ReferralProgramDto
 import com.example.data.api.model.ReferralProgramWrapper
 import com.example.data.api.model.TicketItemResponse
+import com.example.data.api.model.WorkerAssignmentDto
+import com.example.data.api.model.WorkerAssignmentSiteDto
 import com.example.data.api.model.WorkerProfileResponse
+import com.example.data.api.model.WorkersMeResponse
 import com.example.data.local.TokenManager
 import com.example.data.model.AttendanceStatus
 import com.example.data.model.FeedbackCategory
@@ -25,6 +30,7 @@ import okhttp3.Request
 import okhttp3.Response
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -92,10 +98,95 @@ class HrpNetworkAndAuthTest {
     }
 
     @Test
+    fun `test WorkersMeResponse resolves mobileAccess and assignment with confirmed Site GPS`() {
+        val confirmedMeResponse = WorkersMeResponse(
+            worker = WorkerProfileResponse(
+                id = "w-202",
+                fullName = "Trần Văn Nam",
+                status = "ASSIGNED"
+            ),
+            assignment = WorkerAssignmentDto(
+                assignmentId = "asg-01",
+                projectId = "proj-01",
+                projectName = "Samsung Thái Nguyên",
+                status = "ACTIVE",
+                position = "Lắp ráp linh kiện",
+                startDate = "2026-10-01T00:00:00.000Z",
+                sites = listOf(
+                    WorkerAssignmentSiteDto(
+                        id = "site-01",
+                        name = "Cổng A - KCN Yên Bình",
+                        latitude = 21.4567,
+                        longitude = 105.8765,
+                        geofenceRadiusMeters = 200,
+                        geoConfirmedAt = "2026-10-10T08:00:00.000Z"
+                    )
+                )
+            ),
+            mobileAccess = MobileAccessDto(
+                phoneVerified = true,
+                hasActiveAssignment = true,
+                canCheckIn = true
+            )
+        )
+        val profile = confirmedMeResponse.resolvedProfile()
+        assertNotNull(profile)
+        assertTrue(profile!!.canCheckIn)
+        assertTrue(profile.hasActiveAssignment)
+        assertTrue(profile.phoneVerified)
+        assertTrue(profile.hasConfiguredSiteGps)
+        assertEquals(VerificationStatus.APPROVED, profile.verificationStatus)
+        assertTrue(profile.factoryLocation.contains("Samsung Thái Nguyên"))
+
+        // Case where Site GPS is NOT yet confirmed by Admin (geoConfirmedAt = null)
+        val unconfirmedSiteMeResponse = confirmedMeResponse.copy(
+            assignment = confirmedMeResponse.assignment?.copy(
+                sites = listOf(
+                    WorkerAssignmentSiteDto(
+                        id = "site-02",
+                        name = "Xưởng Mới",
+                        latitude = null,
+                        longitude = null,
+                        geoConfirmedAt = null
+                    )
+                )
+            )
+        )
+        val unconfirmedProfile = unconfirmedSiteMeResponse.resolvedProfile()
+        assertNotNull(unconfirmedProfile)
+        assertTrue(unconfirmedProfile!!.canCheckIn)
+        assertFalse(unconfirmedProfile.hasConfiguredSiteGps)
+    }
+
+    @Test
+    fun `test ReferralItemDto parses benefitAmountVnd from BigInt string or numeric`() {
+        val dtoFromString = ReferralItemDto(
+            id = "ref-01",
+            maskedReferredName = "Nguyễn V***",
+            maskedReferredPhone = "098***123",
+            status = "APPROVED",
+            benefitStatus = "APPROVED",
+            benefitAmountVndRaw = "1500000",
+            submittedAt = "2026-10-19T01:00:00.000Z"
+        )
+        val domain = dtoFromString.toDomain()
+        assertEquals(1_500_000L, domain.benefitAmountVnd)
+        assertEquals("2026-10-19", domain.submittedAt)
+    }
+
+    @Test
     fun `test ApiErrorParser maps contract error codes accurately`() {
         val otpErr = ApiErrorParser.fromApiError(ApiError(code = "OTP_SERVICE_UNAVAILABLE", message = ""), 503)
         assertEquals("OTP_SERVICE_UNAVAILABLE", otpErr.code)
         assertTrue(otpErr.message.contains("bảo trì"))
+
+        val phoneNotVerifiedErr = ApiErrorParser.fromApiError(ApiError(code = "PHONE_NOT_VERIFIED", message = ""), 403)
+        assertEquals("PHONE_NOT_VERIFIED", phoneNotVerifiedErr.code)
+        assertTrue(phoneNotVerifiedErr.message.contains("OTP"))
+
+        val siteGeofenceNotConfigErr = ApiErrorParser.fromApiError(ApiError(code = "SITE_GEOFENCE_NOT_CONFIGURED", message = ""), 503)
+        assertEquals("SITE_GEOFENCE_NOT_CONFIGURED", siteGeofenceNotConfigErr.code)
+        assertTrue(siteGeofenceNotConfigErr.message.contains("xác nhận tọa độ"))
 
         val geofenceErr = ApiErrorParser.fromApiError(ApiError(code = "GEOFENCE_OUT_OF_RANGE", message = ""), 422)
         assertEquals("GEOFENCE_OUT_OF_RANGE", geofenceErr.code)
@@ -191,16 +282,16 @@ class HrpNetworkAndAuthTest {
     fun `test AttendanceDayResponse maps status and geofenceResult correctly`() {
         val dto = AttendanceDayResponse(
             id = "att-1",
-            workDate = "2026-10-19",
+            workDate = "2026-10-19T00:00:00.000Z",
             dayOfWeek = "Thứ Hai",
-            shiftName = "Ca Sáng",
-            checkInTime = "07:55",
-            checkOutTime = "17:05",
-            standardHours = 8.0,
+            shift = "MORNING",
+            checkInTime = "2026-10-19T00:55:00.000Z",
+            checkOutTime = "2026-10-19T10:05:00.000Z",
+            regularHours = 8.0,
             otHours = 2.0,
             geofenceResult = "INSIDE",
             factorySite = "Nhà máy HRP",
-            status = "APPROVED",
+            status = "APPENDED",
             note = "Đủ công"
         )
         val domain = dto.toDomain()

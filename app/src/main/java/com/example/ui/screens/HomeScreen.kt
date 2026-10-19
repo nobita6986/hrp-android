@@ -84,7 +84,8 @@ fun HomeScreen(
 ) {
     val approvedDays = attendanceList.count { it.status == AttendanceStatus.APPROVED }.toDouble()
     val otHours = attendanceList.sumOf { it.otHours }
-    val resolvedVerificationStatus = verificationInfo?.status ?: workerProfile.verificationStatus
+    val isSiteGpsLocked = workerProfile.canCheckIn &&
+        (!workerProfile.hasConfiguredSiteGps || workerProfile.siteGeofenceNotConfigured)
 
     LazyColumn(
         modifier = modifier
@@ -95,34 +96,21 @@ fun HomeScreen(
     ) {
         item { Spacer(modifier = Modifier.height(4.dp)) }
 
-        // Worker hero card with Check-In / Check-Out
+        // Worker hero card with Check-In / Check-Out gated by mobileAccess.canCheckIn & Site GPS confirmation
         item {
             WorkerHeroCard(
                 profile = workerProfile,
-                verificationStatus = resolvedVerificationStatus,
                 onCheckIn = onCheckIn,
-                onCheckOut = onCheckOut,
-                onOpenWorkerVerification = onOpenWorkerVerification
+                onCheckOut = onCheckOut
             )
         }
 
-        // Phone OTP Verification Banner (if phone not yet verified)
-        if (!workerProfile.phoneVerified) {
+        // Status explanation card when check-in is locked (either canCheckIn=false or Site GPS not confirmed by Admin)
+        if (!workerProfile.canCheckIn || isSiteGpsLocked) {
             item {
-                PhoneVerificationCard(
-                    phone = workerProfile.phone,
-                    onVerifyClick = onOpenPhoneOtp
-                )
-            }
-        }
-
-        // Worker Verification Status Banner (if not yet APPROVED)
-        if (resolvedVerificationStatus != VerificationStatus.APPROVED) {
-            item {
-                WorkerVerificationStatusCard(
-                    status = resolvedVerificationStatus,
-                    reviewNote = verificationInfo?.reviewNote,
-                    onActionClick = onOpenWorkerVerification
+                MobileAccessStatusCard(
+                    profile = workerProfile,
+                    isSiteGpsLocked = isSiteGpsLocked
                 )
             }
         }
@@ -172,101 +160,26 @@ fun HomeScreen(
 }
 
 @Composable
-private fun PhoneVerificationCard(
-    phone: String,
-    onVerifyClick: () -> Unit
+private fun MobileAccessStatusCard(
+    profile: WorkerProfile,
+    isSiteGpsLocked: Boolean
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = HrpSurface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, HrpWarning.copy(alpha = 0.5f))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(HrpWarning.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PhoneAndroid,
-                    contentDescription = null,
-                    tint = HrpWarning,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Xác thực số điện thoại",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = HrpNavyDark
-                    )
-                )
-                Text(
-                    text = if (phone.isNotBlank()) "SĐT $phone chưa xác thực OTP" else "Xác thực OTP để bảo vệ tài khoản",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = HrpTextSecondary,
-                        fontSize = 11.sp
-                    )
-                )
-            }
-            OutlinedButton(
-                onClick = onVerifyClick,
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.testTag("home_verify_phone_button")
-            ) {
-                Text("Xác thực", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = HrpPrimary)
-            }
-        }
+    val accentColor = if (isSiteGpsLocked) HrpError else HrpWarning
+    val titleText = if (isSiteGpsLocked) {
+        "Tạm khóa chấm công: Site chưa được Admin xác nhận GPS"
+    } else {
+        "Tài khoản chưa mở quyền chấm công (canCheckIn = false)"
     }
-}
-
-@Composable
-private fun WorkerVerificationStatusCard(
-    status: VerificationStatus,
-    reviewNote: String?,
-    onActionClick: () -> Unit
-) {
-    val (badgeColor, titleText, subtitleText, buttonLabel) = when (status) {
-        VerificationStatus.PENDING_REVIEW -> listOf(
-            HrpWarning,
-            "Hồ sơ công nhân đang chờ HR đối soát",
-            "Bộ phận Nhân sự đang kiểm tra thông tin CCCD và mã nhân viên dự án của bạn.",
-            "Xem trạng thái"
-        )
-        VerificationStatus.NEEDS_INFO -> listOf(
-            HrpError,
-            "Cần bổ sung thông tin xác thực công nhân",
-            reviewNote?.takeIf { it.isNotBlank() } ?: "Vui lòng kiểm tra lại CCCD hoặc Mã nhân viên và gửi lại.",
-            "Cập nhật lại"
-        )
-        VerificationStatus.REJECTED -> listOf(
-            HrpError,
-            "Yêu cầu xác thực công nhân bị từ chối",
-            reviewNote?.takeIf { it.isNotBlank() } ?: "Thông tin không khớp với danh sách dự án. Vui lòng gửi lại hồ sơ chính xác.",
-            "Gửi lại hồ sơ"
-        )
-        else -> listOf(
-            HrpPrimary,
-            "Xác thực Công nhân HRP để mở khóa Chấm công",
-            "Dành cho NLĐ đã nhận việc: Liên kết CCCD & Mã nhân viên dự án để chấm công GPS và giới thiệu người làm.",
-            "Xác thực ngay"
-        )
+    val subtitleText = if (isSiteGpsLocked) {
+        "Dự án ${profile.projectName.ifBlank { profile.factoryLocation.ifBlank { "hiện tại" } }} chưa có địa điểm làm việc (Site) được Quản trị viên HRP xác nhận tọa độ GPS chuẩn (geoConfirmedAt). Thao tác Vào ca / Tan ca tạm khóa cho đến khi Admin xác nhận Site."
+    } else {
+        "Danh tính công nhân được mở quyền chấm công và giới thiệu khi tài khoản đã được Quản trị viên HRP liên kết hồ sơ Worker và có phân công dự án đang hoạt động (ACTIVE). Vui lòng liên hệ nhân sự hoặc tổng đài 0211.2216.999 nếu cần hỗ trợ."
     }
 
-    val accentColor = badgeColor as Color
-
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("home_mobile_access_status_card"),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = HrpSurface),
         border = androidx.compose.foundation.BorderStroke(1.dp, accentColor.copy(alpha = 0.4f))
@@ -290,15 +203,15 @@ private fun WorkerVerificationStatusCard(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = titleText as String,
+                        text = titleText,
                         style = MaterialTheme.typography.titleSmall.copy(
                             fontWeight = FontWeight.Bold,
                             color = HrpNavyDark
                         )
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = subtitleText as String,
+                        text = subtitleText,
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = HrpTextSecondary,
                             fontSize = 11.sp,
@@ -307,17 +220,6 @@ private fun WorkerVerificationStatusCard(
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(10.dp))
-            Button(
-                onClick = onActionClick,
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("home_worker_verification_button")
-            ) {
-                Text(buttonLabel as String, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
-            }
         }
     }
 }
@@ -325,15 +227,28 @@ private fun WorkerVerificationStatusCard(
 @Composable
 private fun WorkerHeroCard(
     profile: WorkerProfile,
-    verificationStatus: VerificationStatus,
     onCheckIn: () -> Unit,
-    onCheckOut: () -> Unit,
-    onOpenWorkerVerification: () -> Unit
+    onCheckOut: () -> Unit
 ) {
-    val isApprovedWorker = verificationStatus == VerificationStatus.APPROVED
-    val badgeBg = if (isApprovedWorker) HrpSuccess.copy(alpha = 0.2f) else HrpWarning.copy(alpha = 0.2f)
-    val badgeColor = if (isApprovedWorker) HrpSuccess else HrpWarning
-    val badgeLabel = if (isApprovedWorker) "ĐÃ XÁC THỰC" else verificationStatus.label.uppercase()
+    val canCheckIn = profile.canCheckIn
+    val isSiteGpsReady = profile.hasConfiguredSiteGps && !profile.siteGeofenceNotConfigured
+    val isActionEnabled = canCheckIn && isSiteGpsReady
+
+    val badgeBg = when {
+        isActionEnabled -> HrpSuccess.copy(alpha = 0.2f)
+        canCheckIn && !isSiteGpsReady -> HrpError.copy(alpha = 0.2f)
+        else -> HrpWarning.copy(alpha = 0.2f)
+    }
+    val badgeColor = when {
+        isActionEnabled -> HrpSuccess
+        canCheckIn && !isSiteGpsReady -> HrpError
+        else -> HrpWarning
+    }
+    val badgeLabel = when {
+        isActionEnabled -> "ĐỦ ĐIỀU KIỆN"
+        canCheckIn && !isSiteGpsReady -> "CHỜ XÁC NHẬN SITE"
+        else -> "CHƯA PHÂN CÔNG"
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -401,7 +316,7 @@ private fun WorkerHeroCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Factory badge
+            // Factory / Assignment badge
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -418,19 +333,19 @@ private fun WorkerHeroCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = profile.factoryLocation.ifBlank { "Chưa phân công dự án làm việc" },
+                    text = profile.factoryLocation.ifBlank { "Chưa có phân công dự án đang hoạt động (ACTIVE)" },
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = Color.White,
                         fontSize = 12.sp
                     ),
-                    maxLines = 1
+                    maxLines = 2
                 )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Check-in action bar (gated by Worker Verification approval)
-            if (isApprovedWorker) {
+            // Check-in action bar (strictly gated by mobileAccess.canCheckIn && confirmed Site GPS)
+            if (isActionEnabled) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -471,23 +386,36 @@ private fun WorkerHeroCard(
                     }
                 }
             } else {
-                OutlinedButton(
-                    onClick = onOpenWorkerVerification,
+                val lockReasonText = if (canCheckIn && !isSiteGpsReady) {
+                    "Tạm khóa chấm công: Site dự án chưa được Admin xác nhận tọa độ GPS"
+                } else {
+                    "Chấm công bị khóa: Tài khoản cần được Admin liên kết và có phân công ACTIVE"
+                }
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("button_require_verification"),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, HrpPrimary)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(HrpNavySurface)
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .testTag("check_in_locked_notice"),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.VerifiedUser,
-                        contentDescription = null,
-                        tint = HrpPrimary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cần xác thực công nhân HRP để chấm công GPS", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.VerifiedUser,
+                            contentDescription = null,
+                            tint = badgeColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = lockReasonText,
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
                 }
             }
         }

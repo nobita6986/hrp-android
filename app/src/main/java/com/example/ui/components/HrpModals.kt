@@ -71,6 +71,7 @@ import com.example.ui.theme.HrpWarning
 @Composable
 fun CreateTicketModal(
     initialType: TicketType = TicketType.OTHER,
+    phoneVerified: Boolean = true,
     onSubmit: (type: TicketType, title: String, description: String, amount: Long?, dates: String?) -> Unit,
     onSubmitFeedback: ((category: FeedbackCategory, content: String) -> Unit)? = null,
     onDismiss: () -> Unit
@@ -107,6 +108,39 @@ fun CreateTicketModal(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                if (!phoneVerified) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = HrpWarning.copy(alpha = 0.15f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, HrpWarning.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("modal_feedback_otp_warning")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = HrpWarning,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Tài khoản chưa xác thực số điện thoại (phoneVerified = false). Cần xác thực OTP trước khi gửi góp ý — ứng dụng không giả lập gửi thành công.",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = HrpNavyDark,
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            )
+                        }
+                    }
+                }
+
                 Text(
                     text = "Chọn nhóm nội dung:",
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, color = HrpNavyDark)
@@ -131,7 +165,7 @@ fun CreateTicketModal(
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Nội dung chi tiết") },
+                    label = { Text("Nội dung chi tiết (tối thiểu 10 ký tự)") },
                     placeholder = { Text("Mô tả rõ sự việc, ca làm hoặc đề xuất để HR phản hồi nhanh chóng...") },
                     modifier = Modifier
                         .fillMaxWidth()

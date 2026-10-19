@@ -45,6 +45,14 @@ data class PublicProject(
     val location: String
 )
 
+data class WorkerAssignmentSite(
+    val id: String,
+    val name: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val radiusMeters: Int = 0
+)
+
 data class WorkerProfile(
     val id: String,
     val employeeCode: String,
@@ -61,7 +69,14 @@ data class WorkerProfile(
     val status: String = "ACTIVE",
     val phoneVerified: Boolean = false,
     val verificationStatus: VerificationStatus = VerificationStatus.NONE,
-    val hasActiveAssignment: Boolean = false
+    val hasActiveAssignment: Boolean = false,
+    val canCheckIn: Boolean = false,
+    val assignmentId: String? = null,
+    val projectId: String? = null,
+    val projectName: String = "",
+    val sites: List<WorkerAssignmentSite> = emptyList(),
+    val hasConfiguredSiteGps: Boolean = true,
+    val siteGeofenceNotConfigured: Boolean = false
 )
 
 enum class AttendanceStatus {

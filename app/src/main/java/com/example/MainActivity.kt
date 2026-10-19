@@ -283,6 +283,7 @@ fun HrpApp(
                     NavigationTab.FEEDBACK -> {
                         TicketScreen(
                             tickets = tickets,
+                            phoneVerified = workerProfile.phoneVerified,
                             onCreateTicketClick = { viewModel.setCreateTicketDialogVisible(true) }
                         )
                     }
@@ -308,6 +309,7 @@ fun HrpApp(
     if (showCreateTicketDialog) {
         CreateTicketModal(
             initialType = TicketType.LEAVE_REQUEST,
+            phoneVerified = workerProfile.phoneVerified,
             onSubmit = { type, title, desc, amount, dates ->
                 viewModel.submitTicket(type, title, desc, amount, dates)
             },
@@ -321,6 +323,7 @@ fun HrpApp(
     if (showAdvanceSalaryDialog) {
         CreateTicketModal(
             initialType = TicketType.ADVANCE_SALARY,
+            phoneVerified = workerProfile.phoneVerified,
             onSubmit = { type, title, desc, amount, dates ->
                 viewModel.submitTicket(type, title, desc, amount, dates)
             },

@@ -259,8 +259,12 @@ class HrpRepository(
                     ?: accountUser?.phone?.takeIf { it.isNotBlank() }
                     ?: phone
                 val phoneVerified = workerDto?.phoneVerified ?: accountUser?.phoneVerified ?: false
-                val verStatusStr = workerDto?.verificationStatus ?: accountUser?.verificationStatus ?: "UNVERIFIED"
-                val hasActiveAssignment = workerDto?.hasActiveAssignment ?: false
+                val hasActiveAssignment = workerDto?.hasActiveAssignment
+                    ?: workerDto?.assignment?.status?.equals("ACTIVE", ignoreCase = true)
+                    ?: false
+                val verStatusStr = workerDto?.verificationStatus
+                    ?: accountUser?.verificationStatus
+                    ?: if (hasActiveAssignment) "APPROVED" else "UNVERIFIED"
 
                 tokenManager?.saveUserSession(
                     token = token,
@@ -274,7 +278,14 @@ class HrpRepository(
                 _currentRole.value = UserRole.WORKER
 
                 if (workerDto != null) {
-                    _workerProfile.value = workerDto.toDomain()
+                    val initialDomain = workerDto.toDomain()
+                    _workerProfile.value = initialDomain.copy(
+                        fullName = initialDomain.fullName.ifBlank { resolvedName },
+                        phone = initialDomain.phone.ifBlank { resolvedPhone },
+                        phoneVerified = phoneVerified,
+                        hasActiveAssignment = hasActiveAssignment,
+                        canCheckIn = hasActiveAssignment
+                    )
                 } else {
                     _workerProfile.value = _workerProfile.value.copy(
                         id = accountUser?.id ?: "",
@@ -282,7 +293,8 @@ class HrpRepository(
                         phone = resolvedPhone,
                         phoneVerified = phoneVerified,
                         verificationStatus = VerificationStatus.fromString(verStatusStr),
-                        hasActiveAssignment = hasActiveAssignment
+                        hasActiveAssignment = hasActiveAssignment,
+                        canCheckIn = false
                     )
                 }
 
@@ -298,7 +310,7 @@ class HrpRepository(
     }
 
     /**
-     * Endpoint 3: POST /api/auth/phone-otp/send
+     * Endpoint 3: POST /api/auth/phone-otp/send (Deferred in current wave)
      */
     suspend fun sendPhoneOtp(phone: String): Result<OtpSendData> = withContext(Dispatchers.IO) {
         try {
@@ -315,7 +327,7 @@ class HrpRepository(
     }
 
     /**
-     * Endpoint 4: POST /api/auth/phone-otp/verify
+     * Endpoint 4: POST /api/auth/phone-otp/verify (Deferred in current wave)
      */
     suspend fun verifyPhoneOtp(code: String): Result<OtpVerifyData> = withContext(Dispatchers.IO) {
         try {
@@ -345,33 +357,55 @@ class HrpRepository(
 
     suspend fun loadInitialData() = withContext(Dispatchers.IO) {
         fetchProfile()
-        fetchMyVerification()
         fetchAttendance()
         fetchTickets()
         fetchJobs()
         fetchReferralProgram()
+        if (_workerProfile.value.canCheckIn || _workerProfile.value.hasActiveAssignment) {
+            fetchMyReferrals()
+        }
     }
 
     /**
-     * GET /api/workers/me (Envelope)
+     * GET /api/workers/me (Root JSON { worker, assignment, mobileAccess } or Envelope)
      */
     suspend fun fetchProfile(): Result<WorkerProfile> = withContext(Dispatchers.IO) {
         try {
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
             val response = api.getProfile()
-            val dto = response.data
-            if (response.isSuccessful && dto != null) {
-                val domain = dto.toDomain()
+            val resolved = response.resolvedProfile()
+            if (response.isSuccessful && resolved != null) {
+                val fallbackPhone = _workerProfile.value.phone.ifBlank { tokenManager?.getPhone().orEmpty() }
+                val fallbackName = _workerProfile.value.fullName.takeIf { it.isNotBlank() && it != "Người Lao Động" }
+                    ?: tokenManager?.getFullName().orEmpty().ifBlank { "Người Lao Động" }
+                val domain = resolved.copy(
+                    fullName = resolved.fullName.ifBlank { fallbackName },
+                    phone = resolved.phone.ifBlank { fallbackPhone }
+                )
                 _workerProfile.value = domain
                 tokenManager?.updatePhoneVerified(domain.phoneVerified)
                 tokenManager?.updateVerificationStatus(domain.verificationStatus.name, domain.hasActiveAssignment)
                 Result.success(domain)
             } else {
-                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Không lấy được thông tin hồ sơ"))
+                val err = ApiErrorParser.fromApiError(response.error, fallbackMessage = "Không lấy được thông tin hồ sơ")
+                Result.failure(err)
             }
         } catch (t: Throwable) {
             Log.e(TAG, "Error fetching profile: ${t.message}")
-            Result.failure(ApiErrorParser.parseThrowable(t, "Không lấy được thông tin hồ sơ"))
+            val parsed = ApiErrorParser.parseThrowable(t, "Không lấy được thông tin hồ sơ")
+            // If 404 WORKER_PROFILE_NOT_FOUND, keep user logged in as WORKER but mark canCheckIn=false, hasActiveAssignment=false
+            if (parsed.code.equals("WORKER_PROFILE_NOT_FOUND", ignoreCase = true) || parsed.httpCode == 404) {
+                val fallbackPhone = _workerProfile.value.phone.ifBlank { tokenManager?.getPhone().orEmpty() }
+                val fallbackName = _workerProfile.value.fullName.ifBlank { tokenManager?.getFullName() ?: "Người Lao Động" }
+                _workerProfile.value = _workerProfile.value.copy(
+                    fullName = fallbackName,
+                    phone = fallbackPhone,
+                    verificationStatus = VerificationStatus.NONE,
+                    hasActiveAssignment = false,
+                    canCheckIn = false
+                )
+            }
+            Result.failure(parsed)
         }
     }
 
@@ -552,12 +586,13 @@ class HrpRepository(
         try {
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
             val idempotencyKey = UUID.randomUUID().toString()
+            val safeAccuracy = if (accuracyMeters > 0f && accuracyMeters.isFinite()) accuracyMeters else 15.0f
             val req = CheckInEventRequest(
                 workDate = HrpFormatters.todayDateIso(),
                 action = action,
                 gpsLatitude = latitude,
                 gpsLongitude = longitude,
-                gpsAccuracyMeters = accuracyMeters,
+                gpsAccuracyMeters = safeAccuracy,
                 capturedAt = HrpFormatters.nowIsoTimestamp()
             )
             val response = api.submitCheckInEvent(
@@ -566,14 +601,24 @@ class HrpRepository(
             )
             val data = response.data
             if (response.isSuccessful && data != null) {
+                if (_workerProfile.value.siteGeofenceNotConfigured) {
+                    _workerProfile.value = _workerProfile.value.copy(siteGeofenceNotConfigured = false)
+                }
                 // Refresh attendance history after check-in/out event
                 fetchAttendance()
                 Result.success(data)
             } else {
+                if (response.error?.code.equals("SITE_GEOFENCE_NOT_CONFIGURED", ignoreCase = true)) {
+                    _workerProfile.value = _workerProfile.value.copy(siteGeofenceNotConfigured = true)
+                }
                 Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Chấm công thất bại từ máy chủ"))
             }
         } catch (t: Throwable) {
-            Result.failure(ApiErrorParser.parseThrowable(t, "Lỗi chấm công qua GPS"))
+            val parsed = ApiErrorParser.parseThrowable(t, "Lỗi chấm công qua GPS")
+            if (parsed.code.equals("SITE_GEOFENCE_NOT_CONFIGURED", ignoreCase = true)) {
+                _workerProfile.value = _workerProfile.value.copy(siteGeofenceNotConfigured = true)
+            }
+            Result.failure(parsed)
         }
     }
 
@@ -583,6 +628,11 @@ class HrpRepository(
         longitude: Double? = null,
         accuracy: Float? = null
     ): Result<AttendanceDay> = withContext(Dispatchers.IO) {
+        if (!_workerProfile.value.canCheckIn) {
+            return@withContext Result.failure(
+                Exception("Tài khoản chưa đủ điều kiện chấm công (cần được Admin liên kết hồ sơ công nhân và phân công dự án ACTIVE).")
+            )
+        }
         if (latitude == null || longitude == null) {
             return@withContext Result.failure(Exception("Yêu cầu định vị GPS thực tế từ thiết bị để chấm công."))
         }
@@ -618,6 +668,11 @@ class HrpRepository(
         longitude: Double? = null,
         accuracy: Float? = null
     ): Result<AttendanceDay> = withContext(Dispatchers.IO) {
+        if (!_workerProfile.value.canCheckIn) {
+            return@withContext Result.failure(
+                Exception("Tài khoản chưa đủ điều kiện chấm công (cần được Admin liên kết hồ sơ công nhân và phân công dự án ACTIVE).")
+            )
+        }
         if (latitude == null || longitude == null) {
             return@withContext Result.failure(Exception("Yêu cầu định vị GPS thực tế từ thiết bị để kết thúc ca."))
         }
@@ -676,11 +731,22 @@ class HrpRepository(
      * Endpoint 12: POST /api/feedback
      */
     suspend fun submitFeedback(category: FeedbackCategory, content: String): Result<FeedbackItem> = withContext(Dispatchers.IO) {
+        val trimmedContent = content.trim()
+        if (!_workerProfile.value.phoneVerified) {
+            return@withContext Result.failure(
+                Exception("Tài khoản chưa xác thực số điện thoại (phoneVerified=false). Cần xác thực OTP trước khi gửi góp ý.")
+            )
+        }
+        if (trimmedContent.length < 10) {
+            return@withContext Result.failure(
+                Exception("Nội dung góp ý phải có ít nhất 10 ký tự.")
+            )
+        }
         try {
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
             val req = FeedbackSubmitRequest(
                 category = category.code,
-                content = content
+                content = trimmedContent
             )
             val response = api.submitFeedback(req)
             val data = response.data
@@ -688,7 +754,7 @@ class HrpRepository(
                 val item = FeedbackItem(
                     id = data.feedbackId,
                     category = category,
-                    content = content,
+                    content = trimmedContent,
                     status = data.status,
                     createdAt = data.submittedAt ?: HrpFormatters.todayDateIso()
                 )
@@ -696,6 +762,10 @@ class HrpRepository(
                 fetchMyFeedback()
                 Result.success(item)
             } else {
+                if (response.error?.code.equals("PHONE_NOT_VERIFIED", ignoreCase = true)) {
+                    _workerProfile.value = _workerProfile.value.copy(phoneVerified = false)
+                    tokenManager?.updatePhoneVerified(false)
+                }
                 Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = "Gửi góp ý thất bại"))
             }
         } catch (t: Throwable) {
