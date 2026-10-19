@@ -23,10 +23,10 @@ import kotlinx.coroutines.launch
 
 enum class NavigationTab(val label: String) {
     HOME("Tổng quan"),
+    JOBS("Việc làm"),
     ATTENDANCE("Chấm công"),
-    PAYROLL("Phiếu lương"),
-    TICKETS("Yêu cầu"),
-    JOBS("Tuyển dụng & CTV")
+    FEEDBACK("Góp ý"),
+    REFERRAL("Giới thiệu")
 }
 
 class HrpViewModel(
@@ -72,9 +72,6 @@ class HrpViewModel(
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
 
     // Dialog toggles
-    private val _showRoleSwitcher = MutableStateFlow(false)
-    val showRoleSwitcher: StateFlow<Boolean> = _showRoleSwitcher.asStateFlow()
-
     private val _showCreateTicketDialog = MutableStateFlow(false)
     val showCreateTicketDialog: StateFlow<Boolean> = _showCreateTicketDialog.asStateFlow()
 
@@ -128,16 +125,6 @@ class HrpViewModel(
 
     fun selectTab(tab: NavigationTab) {
         _currentTab.value = tab
-    }
-
-    fun setRoleSwitcherVisible(visible: Boolean) {
-        _showRoleSwitcher.value = visible
-    }
-
-    fun switchRole(role: UserRole) {
-        repository.switchRole(role)
-        _showRoleSwitcher.value = false
-        _toastMessage.value = "Đã chuyển sang vai trò: ${role.displayName}"
     }
 
     fun setCreateTicketDialogVisible(visible: Boolean) {
@@ -225,53 +212,7 @@ class HrpViewModel(
         }
     }
 
-    // ==================== HR ACTIONS ====================
-
-    fun approveTicket(ticketId: String, note: String = "") {
-        viewModelScope.launch {
-            val result = repository.approveTicket(ticketId, note)
-            result.onSuccess {
-                _toastMessage.value = "Đã duyệt yêu cầu thành công!"
-            }.onFailure {
-                _toastMessage.value = "Lỗi duyệt yêu cầu: ${it.message}"
-            }
-        }
-    }
-
-    fun markTicketPaid(ticketId: String) {
-        viewModelScope.launch {
-            val result = repository.markTicketPaid(ticketId)
-            result.onSuccess {
-                _toastMessage.value = "Kế toán đã giải ngân tiền tạm ứng thành công!"
-            }.onFailure {
-                _toastMessage.value = "Lỗi giải ngân: ${it.message}"
-            }
-        }
-    }
-
-    fun rejectTicket(ticketId: String, reason: String = "") {
-        viewModelScope.launch {
-            val result = repository.rejectTicket(ticketId, reason)
-            result.onSuccess {
-                _toastMessage.value = "Đã từ chối yêu cầu."
-            }.onFailure {
-                _toastMessage.value = "Lỗi khi từ chối: ${it.message}"
-            }
-        }
-    }
-
-    fun approveAllAttendance() {
-        viewModelScope.launch {
-            val result = repository.approveAllAttendanceToday()
-            result.onSuccess {
-                _toastMessage.value = "Đã duyệt toàn bộ danh sách chấm công ca sáng hôm nay!"
-            }.onFailure {
-                _toastMessage.value = "Lỗi khi duyệt toàn bộ chấm công: ${it.message}"
-            }
-        }
-    }
-
-    // ==================== CTV ACTIONS ====================
+    // ==================== CANDIDATE / JOB APPLICATION ====================
 
     fun submitApplication(jobTitle: String, candidateName: String, phone: String) {
         viewModelScope.launch {

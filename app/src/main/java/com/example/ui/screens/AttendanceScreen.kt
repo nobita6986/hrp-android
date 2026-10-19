@@ -69,12 +69,10 @@ import com.example.ui.theme.HrpWarning
 
 @Composable
 fun AttendanceScreen(
-    currentRole: UserRole,
     attendanceList: List<AttendanceDay>,
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit,
     onDisputeAttendance: (AttendanceDay) -> Unit,
-    onApproveAll: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedFilter by remember { mutableStateOf<AttendanceStatus?>(null) }
@@ -103,50 +101,6 @@ fun AttendanceScreen(
                 onCheckIn = onCheckIn,
                 onCheckOut = onCheckOut
             )
-        }
-
-        // HR batch approval bar
-        if (currentRole == UserRole.HR_STAFF || currentRole == UserRole.BOD) {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = HrpPrimarySoft),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, HrpPrimary.copy(alpha = 0.3f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Chế độ HR Duyệt Bảng Công",
-                                fontWeight = FontWeight.Bold,
-                                color = HrpPrimary,
-                                fontSize = 13.sp
-                            )
-                            Text(
-                                "Kiểm tra GPS và giờ quẹt vân tay xưởng",
-                                color = HrpTextSecondary,
-                                fontSize = 11.sp
-                            )
-                        }
-                        Button(
-                            onClick = onApproveAll,
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary),
-                            modifier = Modifier.testTag("attendance_approve_all")
-                        ) {
-                            Icon(imageVector = Icons.Default.FactCheck, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Duyệt Hết", fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
         }
 
         // Interactive mini calendar bar

@@ -2,11 +2,18 @@
 ## DỰ ÁN ANDROID HRP (MOBILE CLIENT)
 
 > **Mã định danh hợp đồng:** `web-android-contract.md`  
-> **Hash SHA-256 Hợp đồng:** `90131B6F1F773E2D11E22020BFF95DADD8310E0B02FB9881C06267122ED774E9`  
+> **Hash SHA-256 Hợp đồng:** `300C6F107F5C08823AA47B049A560C169393F2D021BFA03B40B2AAC90999F57A`  
 > **Git Repository Android:** `https://github.com/nobita6986/hrp-android` (Thư mục: `D:\CodeApp\hr-partner`)  
 > **Backend Repository:** `D:\CodeApp\HRP`  
-> **Thời điểm lập:** 18/10/2026  
+> **Thời điểm cập nhật:** 19/10/2026  
 > **Đối tượng áp dụng:** Mọi Coding Agent và Lập trình viên phụ trách Android App HRP qua các phiên làm việc.
+
+> **Ghi chú kỹ thuật trước Giai đoạn 1:**
+> 1. Vị trí enum điều hướng hiện hữu nằm ở `com.example.ui.viewmodel.NavigationTab` trong `HrpViewModel.kt` (không dùng `Screen.kt`).
+> 2. DTO ở Giai đoạn 1 tuân thủ Mixed Response: các route Web hiện hữu giữ root JSON (`/api/auth/login`, `GET /api/jobs`, `POST /api/public/jobs/{slug}/applications`, `GET /api/worker/attendance`); các route mới cho Mobile dùng envelope `{ ok, data, error }`.
+> 3. Idempotency key gửi qua HTTP Header `Idempotency-Key: <UUID>` thay vì body.
+> 4. Ngưỡng GPS và bán kính phụ thuộc cấu hình Site/Project trên server; nếu chưa cấu hình thì fail-closed với `SITE_GEOFENCE_NOT_CONFIGURED`.
+> 5. Referral chỉ dành cho Người lao động đã xác thực và đủ điều kiện (`canSubmit: true`).
 
 ---
 
@@ -49,22 +56,26 @@
 
 ## 3. LỘ TRÌNH 5 GIAI ĐOẠN THỰC THI (PHASED EXECUTION ROADMAP)
 
-### GIAI ĐOẠN 0: DỌN DẸP MOCK & KHÓA AN TOÀN (ĐỘC LẬP MẠNG)
+### GIAI ĐOẠN 0: DỌN DẸP MOCK & KHÓA AN TOÀN (ĐỘC LẬP MẠNG) - [HOÀN TẤT]
 *Mục tiêu: Đưa ứng dụng về trạng thái giao diện sạch, đúng 5 tabs, không còn code giả lập role HR/Admin/BoD/CTV.*
 
-#### Danh sách công việc:
-1. **Điều hướng (`Screen.kt` & `MainActivity.kt`):**
-   - Cập nhật enum `Screen`: `HOME`, `JOBS`, `ATTENDANCE`, `FEEDBACK`, `REFERRAL`.
-   - Cập nhật `BottomNavigationBar` hiển thị đúng 5 tabs trên.
-2. **Loại bỏ vai trò giả lập (`HomeScreen.kt` & `HrpViewModel.kt`):**
-   - Xóa bỏ `RoleSwitcherDialog`, xóa các biến `UserRole.HR`, `UserRole.BOD`, `UserRole.CTV`.
-   - Giữ lại duy nhất `UserRole.WORKER` và trạng thái khách vãng lai.
-   - Xóa bỏ các nút phê duyệt ticket (Approve/Reject) và nút xem thống kê ban giám đốc khỏi UI.
+#### Danh sách công việc đã hoàn thành:
+1. **Điều hướng (`HrpViewModel.kt`, `HrpBottomBar.kt`, `MainActivity.kt`):**
+   - Đã cập nhật enum `NavigationTab`: `HOME`, `JOBS`, `ATTENDANCE`, `FEEDBACK`, `REFERRAL`.
+   - Cập nhật `HrpBottomBar` hiển thị chuẩn xác 5 tabs trên theo đúng thứ tự.
+   - Thêm `ReferralScreen.kt` hiển thị trạng thái "Chưa mở" minh bạch, không mock dữ liệu hay hard-code hoa hồng.
+2. **Loại bỏ vai trò giả lập (`HrpTopBar.kt`, `HomeScreen.kt`, `HrpViewModel.kt`):**
+   - Xóa bỏ `RoleSwitcherDialog` và nút chuyển role khỏi `HrpTopBar`, thay bằng nút Đăng xuất an toàn.
+   - Xóa bỏ các nhánh HR/BoD/CTV trong `HomeScreen`, `TicketScreen`, `AttendanceScreen`, `JobBoardScreen`.
+   - Giữ lại vai trò duy nhất `WORKER` (NLĐ / Người tìm việc).
+   - Nếu đăng nhập trả về role khác `WORKER`, session bị từ chối ngay lập tức và xóa token.
 3. **Tạm ẩn màn hình không dùng:**
-   - Ẩn điều hướng đến `PayrollScreen` và `CandidateManagementScreen`. Không hiển thị nút bấm truy cập trên UI.
+   - Ẩn điều hướng đến `PayrollScreen` và xóa bỏ toàn bộ card theo dõi ứng viên CTV / quản lý tuyển dụng nội bộ.
 4. **Loại bỏ Mock Data Fallback trong `HrpRepository.kt`:**
-   - Xóa bỏ các danh sách cứng (`mockAttendanceList`, `mockTickets`, `mockWorkers`).
-   - Các phương thức chuyển sang gọi suspend API client, tạm trả về `Result.failure()` nếu chưa nối backend, không tự báo thành công.
+   - Xóa bỏ toàn bộ mock datasets ban đầu.
+   - Các API methods trả về `Result.failure()` thật khi mạng lỗi, loại bỏ hoàn toàn fallback mock success / fake login.
+5. **Kiểm thử biên dịch:**
+   - Đã sinh `gradlew.bat` và chạy `./gradlew compileDebugKotlin` thành công 100% (0 errors).
 
 ---
 

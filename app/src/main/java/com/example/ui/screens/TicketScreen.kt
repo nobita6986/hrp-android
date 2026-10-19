@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,25 +20,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Assignment
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.MonetizationOn
-import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,32 +47,22 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.TicketItem
 import com.example.data.model.TicketStatus
 import com.example.data.model.TicketType
-import com.example.data.model.UserRole
 import com.example.data.repository.HrpFormatters
-import com.example.ui.components.HrpSectionHeader
 import com.example.ui.components.TicketStatusBadge
 import com.example.ui.theme.HrpBackground
-import com.example.ui.theme.HrpError
 import com.example.ui.theme.HrpNavyDark
-import com.example.ui.theme.HrpNavySurface
 import com.example.ui.theme.HrpPrimary
 import com.example.ui.theme.HrpPrimarySoft
-import com.example.ui.theme.HrpSuccess
 import com.example.ui.theme.HrpSurface
 import com.example.ui.theme.HrpSurfaceBorder
 import com.example.ui.theme.HrpSurfaceSubtle
-import com.example.ui.theme.HrpTextPrimary
 import com.example.ui.theme.HrpTextSecondary
 import com.example.ui.theme.HrpWarning
 
 @Composable
 fun TicketScreen(
-    currentRole: UserRole,
     tickets: List<TicketItem>,
     onCreateTicketClick: () -> Unit,
-    onApproveTicket: (String) -> Unit,
-    onMarkPaid: (String) -> Unit,
-    onRejectTicket: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTypeFilter by remember { mutableStateOf<TicketType?>(null) }
@@ -107,7 +87,6 @@ fun TicketScreen(
                 TicketHeaderBanner(
                     total = tickets.size,
                     pending = tickets.count { it.status == TicketStatus.PENDING || it.status == TicketStatus.HR_APPROVED },
-                    currentRole = currentRole,
                     onCreateTicket = onCreateTicketClick
                 )
             }
@@ -144,14 +123,32 @@ fun TicketScreen(
             }
 
             // Tickets List
-            items(filteredTickets, key = { it.id }) { ticket ->
-                TicketCard(
-                    ticket = ticket,
-                    currentRole = currentRole,
-                    onApprove = { onApproveTicket(ticket.id) },
-                    onMarkPaid = { onMarkPaid(ticket.id) },
-                    onReject = { onRejectTicket(ticket.id) }
-                )
+            if (filteredTickets.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = HrpSurface),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, HrpSurfaceBorder)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Chưa có góp ý hoặc yêu cầu nào",
+                                color = HrpTextSecondary,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            } else {
+                items(filteredTickets, key = { it.id }) { ticket ->
+                    TicketCard(ticket = ticket)
+                }
             }
 
             item { Spacer(modifier = Modifier.height(80.dp)) } // Padding for FAB
@@ -173,7 +170,7 @@ fun TicketScreen(
             ) {
                 Icon(imageVector = Icons.Default.Add, contentDescription = "Tạo đơn mới")
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Tạo Đơn", fontWeight = FontWeight.Bold)
+                Text("Gửi Góp Ý / Yêu Cầu", fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -183,7 +180,6 @@ fun TicketScreen(
 private fun TicketHeaderBanner(
     total: Int,
     pending: Int,
-    currentRole: UserRole,
     onCreateTicket: () -> Unit
 ) {
     Card(
@@ -199,7 +195,7 @@ private fun TicketHeaderBanner(
             ) {
                 Column {
                     Text(
-                        text = "QUẢN LÝ ĐƠN TỪ & YÊU CẦU",
+                        text = "SỔ TIẾP NHẬN YÊU CẦU & GÓP Ý",
                         style = MaterialTheme.typography.labelSmall.copy(
                             color = HrpPrimary,
                             fontWeight = FontWeight.Bold,
@@ -208,7 +204,7 @@ private fun TicketHeaderBanner(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = if (currentRole == UserRole.WORKER) "Sổ Tiếp Nhận Yêu Cầu Công Nhân" else "Cổng Duyệt Đơn Tập Trung",
+                        text = "Góp Ý & Đơn Từ Của Bạn",
                         style = MaterialTheme.typography.titleMedium.copy(
                             color = Color.White,
                             fontWeight = FontWeight.Bold
@@ -231,13 +227,13 @@ private fun TicketHeaderBanner(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Hệ thống hỗ trợ duyệt 3 cấp tự động: Tạm ứng lương → HR duyệt → Kế toán chi tiền. Khiếu nại chấm công xử lý trong 24h.",
+                text = "Tổng cộng $total yêu cầu đã gửi. Bạn có thể gửi phản hồi, xin nghỉ phép, tạm ứng lương hoặc khiếu nại công tại đây.",
                 color = Color.White.copy(alpha = 0.8f),
                 fontSize = 12.sp,
-                lineHeight = 17.sp
+                lineHeight = 16.sp
             )
         }
     }
@@ -245,11 +241,7 @@ private fun TicketHeaderBanner(
 
 @Composable
 private fun TicketCard(
-    ticket: TicketItem,
-    currentRole: UserRole,
-    onApprove: () -> Unit,
-    onMarkPaid: () -> Unit,
-    onReject: () -> Unit
+    ticket: TicketItem
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -258,7 +250,7 @@ private fun TicketCard(
         border = androidx.compose.foundation.BorderStroke(1.dp, HrpSurfaceBorder)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            // Header: Code, Type and Status
+            // Type & Date Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -267,13 +259,13 @@ private fun TicketCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .background(
                                 when (ticket.type) {
+                                    TicketType.LEAVE_REQUEST -> com.example.ui.theme.HrpInfo.copy(alpha = 0.15f)
                                     TicketType.ADVANCE_SALARY -> HrpPrimarySoft
                                     TicketType.TIMESHEET_DISPUTE -> HrpWarning.copy(alpha = 0.15f)
-                                    TicketType.LEAVE_REQUEST -> com.example.ui.theme.HrpInfo.copy(alpha = 0.15f)
                                     TicketType.OTHER -> HrpSurfaceSubtle
                                 }
                             ),
@@ -281,22 +273,22 @@ private fun TicketCard(
                     ) {
                         Icon(
                             imageVector = when (ticket.type) {
+                                TicketType.LEAVE_REQUEST -> Icons.Default.DateRange
                                 TicketType.ADVANCE_SALARY -> Icons.Default.MonetizationOn
                                 TicketType.TIMESHEET_DISPUTE -> Icons.Default.Timer
-                                TicketType.LEAVE_REQUEST -> Icons.Default.DateRange
-                                TicketType.OTHER -> Icons.Default.Assignment
+                                else -> Icons.Default.Assignment
                             },
                             contentDescription = null,
                             tint = when (ticket.type) {
+                                TicketType.LEAVE_REQUEST -> com.example.ui.theme.HrpInfo
                                 TicketType.ADVANCE_SALARY -> HrpPrimary
                                 TicketType.TIMESHEET_DISPUTE -> HrpWarning
-                                TicketType.LEAVE_REQUEST -> com.example.ui.theme.HrpInfo
-                                TicketType.OTHER -> HrpNavyDark
+                                else -> HrpNavyDark
                             },
                             modifier = Modifier.size(18.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
                             text = ticket.type.label,
@@ -386,62 +378,11 @@ private fun TicketCard(
                         .padding(8.dp)
                 ) {
                     Text(
-                        text = "HR phản hồi: ${ticket.hrNote}",
+                        text = "Phản hồi: ${ticket.hrNote}",
                         fontSize = 11.sp,
                         color = HrpNavyDark,
                         fontWeight = FontWeight.Medium
                     )
-                }
-            }
-
-            // HR / Approver Action Buttons (if in HR or BoD role)
-            if (currentRole == UserRole.HR_STAFF || currentRole == UserRole.BOD) {
-                if (ticket.status == TicketStatus.PENDING || ticket.status == TicketStatus.HR_APPROVED) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = HrpSurfaceBorder)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (ticket.status == TicketStatus.PENDING) {
-                            Button(
-                                onClick = onApprove,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary)
-                            ) {
-                                Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Duyệt Đơn", fontSize = 12.sp)
-                            }
-                        }
-
-                        if (ticket.status == TicketStatus.HR_APPROVED && ticket.type == TicketType.ADVANCE_SALARY) {
-                            Button(
-                                onClick = onMarkPaid,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = HrpSuccess)
-                            ) {
-                                Icon(imageVector = Icons.Default.Payment, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Chi Tiền", fontSize = 12.sp)
-                            }
-                        }
-
-                        OutlinedButton(
-                            onClick = onReject,
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = HrpError),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, HrpError.copy(alpha = 0.5f))
-                        ) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Từ Chối", fontSize = 12.sp)
-                        }
-                    }
                 }
             }
         }

@@ -2,10 +2,10 @@ package com.example.ui.components
 
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.WorkOutline
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -42,10 +42,10 @@ fun HrpBottomBar(
     ) {
         val items = listOf(
             Triple(NavigationTab.HOME, "Tổng quan", Icons.Default.Dashboard),
+            Triple(NavigationTab.JOBS, "Việc làm", Icons.Default.WorkOutline),
             Triple(NavigationTab.ATTENDANCE, "Chấm công", Icons.Default.CalendarMonth),
-            Triple(NavigationTab.PAYROLL, "Phiếu lương", Icons.AutoMirrored.Filled.ReceiptLong),
-            Triple(NavigationTab.TICKETS, "Yêu cầu", Icons.Default.Assignment),
-            Triple(NavigationTab.JOBS, "Việc làm & CTV", Icons.Default.WorkOutline)
+            Triple(NavigationTab.FEEDBACK, "Góp ý", Icons.Default.Assignment),
+            Triple(NavigationTab.REFERRAL, "Giới thiệu", Icons.Default.Share)
         )
 
         items.forEach { (tab, label, icon) ->
@@ -54,7 +54,7 @@ fun HrpBottomBar(
                 selected = isSelected,
                 onClick = { onTabSelected(tab) },
                 icon = {
-                    if (tab == NavigationTab.TICKETS && pendingTicketsCount > 0) {
+                    if (tab == NavigationTab.FEEDBACK && pendingTicketsCount > 0) {
                         BadgedBox(
                             badge = {
                                 Badge(containerColor = HrpPrimary) {

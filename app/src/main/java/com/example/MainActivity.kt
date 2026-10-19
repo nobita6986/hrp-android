@@ -31,18 +31,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.model.TicketType
-import com.example.data.model.UserRole
 import com.example.ui.components.ApplyJobModal
 import com.example.ui.components.CheckInSuccessModal
 import com.example.ui.components.CreateTicketModal
 import com.example.ui.components.HrpBottomBar
 import com.example.ui.components.HrpTopBar
-import com.example.ui.components.RoleSwitcherDialog
 import com.example.ui.screens.AttendanceScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.JobBoardScreen
 import com.example.ui.screens.LoginScreen
-import com.example.ui.screens.PayrollScreen
+import com.example.ui.screens.ReferralScreen
 import com.example.ui.screens.TicketScreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.HrpViewModel
@@ -69,7 +67,6 @@ fun MainAppHost(
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
     val isAuthenticating by viewModel.isAuthenticating.collectAsState()
     val loginErrorMessage by viewModel.loginErrorMessage.collectAsState()
-    val toastMessage by viewModel.toastMessage.collectAsState()
 
     val context = LocalContext.current
 
@@ -116,19 +113,14 @@ fun HrpApp(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    val currentRole by viewModel.currentRole.collectAsState()
     val workerProfile by viewModel.workerProfile.collectAsState()
     val attendanceList by viewModel.attendanceList.collectAsState()
-    val payslip by viewModel.payslip.collectAsState()
     val tickets by viewModel.tickets.collectAsState()
     val jobListings by viewModel.jobListings.collectAsState()
-    val ctvCandidates by viewModel.ctvCandidates.collectAsState()
-    val bodMetrics by viewModel.bodMetrics.collectAsState()
     val currentTab by viewModel.currentTab.collectAsState()
     val toastMessage by viewModel.toastMessage.collectAsState()
     val lastGpsCheckIn by viewModel.lastGpsCheckIn.collectAsState()
 
-    val showRoleSwitcher by viewModel.showRoleSwitcher.collectAsState()
     val showCreateTicketDialog by viewModel.showCreateTicketDialog.collectAsState()
     val showAdvanceSalaryDialog by viewModel.showAdvanceSalaryDialog.collectAsState()
     val showCheckInSuccessDialog by viewModel.showCheckInSuccessDialog.collectAsState()
@@ -155,7 +147,6 @@ fun HrpApp(
                 val loc = viewModel.locationHelper.getCurrentLocation()
                 viewModel.checkIn(loc)
             } else {
-                // If permission denied by user, attempt check-in with fallback location
                 viewModel.checkIn(null)
             }
         }
@@ -186,8 +177,6 @@ fun HrpApp(
         modifier = Modifier.fillMaxSize(),
         topBar = {
             HrpTopBar(
-                currentRole = currentRole,
-                onOpenRoleSwitcher = { viewModel.setRoleSwitcherVisible(true) },
                 onLogout = { viewModel.logout() }
             )
         },
@@ -195,8 +184,7 @@ fun HrpApp(
             HrpBottomBar(
                 currentTab = currentTab,
                 pendingTicketsCount = tickets.count {
-                    it.status == com.example.data.model.TicketStatus.PENDING ||
-                        it.status == com.example.data.model.TicketStatus.HR_APPROVED
+                    it.status == com.example.data.model.TicketStatus.PENDING
                 },
                 onTabSelected = { viewModel.selectTab(it) }
             )
@@ -216,58 +204,42 @@ fun HrpApp(
                 when (tab) {
                     NavigationTab.HOME -> {
                         HomeScreen(
-                            currentRole = currentRole,
                             workerProfile = workerProfile,
-                            payslip = payslip,
+                            attendanceList = attendanceList,
                             tickets = tickets,
-                            bodMetrics = bodMetrics,
                             onNavigateTab = { viewModel.selectTab(it) },
                             onCheckIn = { performGpsCheckIn() },
                             onCheckOut = { viewModel.checkOut() },
                             onRequestAdvanceSalary = { viewModel.setAdvanceSalaryDialogVisible(true) },
-                            onCreateTicket = { viewModel.setCreateTicketDialogVisible(true) },
-                            onApproveAllAttendance = { viewModel.approveAllAttendance() }
-                        )
-                    }
-
-                    NavigationTab.ATTENDANCE -> {
-                        AttendanceScreen(
-                            currentRole = currentRole,
-                            attendanceList = attendanceList,
-                            onCheckIn = { performGpsCheckIn() },
-                            onCheckOut = { viewModel.checkOut() },
-                            onDisputeAttendance = { viewModel.setCreateTicketDialogVisible(true) },
-                            onApproveAll = { viewModel.approveAllAttendance() }
-                        )
-                    }
-
-                    NavigationTab.PAYROLL -> {
-                        PayrollScreen(
-                            currentRole = currentRole,
-                            workerProfile = workerProfile,
-                            payslip = payslip,
-                            onRequestAdvanceSalary = { viewModel.setAdvanceSalaryDialogVisible(true) }
-                        )
-                    }
-
-                    NavigationTab.TICKETS -> {
-                        TicketScreen(
-                            currentRole = currentRole,
-                            tickets = tickets,
-                            onCreateTicketClick = { viewModel.setCreateTicketDialogVisible(true) },
-                            onApproveTicket = { viewModel.approveTicket(it) },
-                            onMarkPaid = { viewModel.markTicketPaid(it) },
-                            onRejectTicket = { viewModel.rejectTicket(it) }
+                            onCreateTicket = { viewModel.setCreateTicketDialogVisible(true) }
                         )
                     }
 
                     NavigationTab.JOBS -> {
                         JobBoardScreen(
-                            currentRole = currentRole,
                             jobs = jobListings,
-                            candidates = ctvCandidates,
                             onApplyJob = { viewModel.openApplyJob(it) }
                         )
+                    }
+
+                    NavigationTab.ATTENDANCE -> {
+                        AttendanceScreen(
+                            attendanceList = attendanceList,
+                            onCheckIn = { performGpsCheckIn() },
+                            onCheckOut = { viewModel.checkOut() },
+                            onDisputeAttendance = { viewModel.setCreateTicketDialogVisible(true) }
+                        )
+                    }
+
+                    NavigationTab.FEEDBACK -> {
+                        TicketScreen(
+                            tickets = tickets,
+                            onCreateTicketClick = { viewModel.setCreateTicketDialogVisible(true) }
+                        )
+                    }
+
+                    NavigationTab.REFERRAL -> {
+                        ReferralScreen()
                     }
                 }
             }
@@ -275,15 +247,6 @@ fun HrpApp(
     }
 
     // Modal Dialogs
-    if (showRoleSwitcher) {
-        RoleSwitcherDialog(
-            currentRole = currentRole,
-            onRoleSelected = { viewModel.switchRole(it) },
-            onDismiss = { viewModel.setRoleSwitcherVisible(false) },
-            onLogout = { viewModel.logout() }
-        )
-    }
-
     if (showCreateTicketDialog) {
         CreateTicketModal(
             initialType = TicketType.LEAVE_REQUEST,
