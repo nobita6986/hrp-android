@@ -168,12 +168,12 @@ private fun MobileAccessStatusCard(
     val titleText = if (isSiteGpsLocked) {
         "Tạm khóa chấm công: Site chưa được Admin xác nhận GPS"
     } else {
-        "Tài khoản chưa mở quyền chấm công (canCheckIn = false)"
+        "Tài khoản chưa liên kết hồ sơ Worker / Assignment (canCheckIn = false)"
     }
     val subtitleText = if (isSiteGpsLocked) {
         "Dự án ${profile.projectName.ifBlank { profile.factoryLocation.ifBlank { "hiện tại" } }} chưa có địa điểm làm việc (Site) được Quản trị viên HRP xác nhận tọa độ GPS chuẩn (geoConfirmedAt). Thao tác Vào ca / Tan ca tạm khóa cho đến khi Admin xác nhận Site."
     } else {
-        "Danh tính công nhân được mở quyền chấm công và giới thiệu khi tài khoản đã được Quản trị viên HRP liên kết hồ sơ Worker và có phân công dự án đang hoạt động (ACTIVE). Vui lòng liên hệ nhân sự hoặc tổng đài 0211.2216.999 nếu cần hỗ trợ."
+        "Bạn có thể xem việc làm và nộp hồ sơ ứng tuyển ngay tại mục Việc làm. Chấm công GPS và Giới thiệu người làm chỉ mở khi tài khoản được Quản trị viên HRP liên kết hồ sơ Worker và phân công dự án ACTIVE. Tính năng Góp ý mở sau khi số điện thoại được xác minh OTP."
     }
 
     Card(
@@ -314,7 +314,44 @@ private fun WorkerHeroCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Phone & OTP verification status badge (explicitly shows phoneVerified=false without fake OTP)
+            val phoneDisplay = profile.phone.ifBlank { "Chưa cập nhật SĐT" }
+            val otpStatusText = if (profile.phoneVerified) {
+                "SĐT: $phoneDisplay • Đã xác minh OTP"
+            } else {
+                "SĐT: $phoneDisplay • Chưa xác minh OTP (phoneVerified=false)"
+            }
+            val otpStatusColor = if (profile.phoneVerified) HrpSuccess else HrpWarning
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(HrpNavySurface)
+                    .padding(horizontal = 12.dp, vertical = 7.dp)
+                    .testTag("home_phone_verification_badge"),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhoneAndroid,
+                    contentDescription = null,
+                    tint = otpStatusColor,
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = otpStatusText,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = otpStatusColor,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Factory / Assignment badge
             Row(

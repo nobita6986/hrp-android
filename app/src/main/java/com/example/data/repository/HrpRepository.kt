@@ -116,6 +116,23 @@ class HrpRepository(
         if (tokenManager == null) {
             tokenManager = TokenManager.getInstance(appCtx)
         }
+        tokenManager?.let { tm ->
+            if (tm.isLoggedIn()) {
+                val cachedName = tm.getFullName()?.takeIf { it.isNotBlank() } ?: "Người Lao Động"
+                val cachedPhone = tm.getPhone().orEmpty()
+                val cachedPhoneVerified = tm.isPhoneVerified()
+                val cachedHasAssignment = tm.hasActiveAssignment()
+                val cachedVerStatus = VerificationStatus.fromString(tm.getVerificationStatus())
+                _workerProfile.value = _workerProfile.value.copy(
+                    fullName = cachedName,
+                    phone = cachedPhone,
+                    phoneVerified = cachedPhoneVerified,
+                    verificationStatus = cachedVerStatus,
+                    hasActiveAssignment = cachedHasAssignment,
+                    canCheckIn = cachedHasAssignment
+                )
+            }
+        }
     }
 
     private val _currentRole = MutableStateFlow(UserRole.WORKER)
@@ -215,13 +232,75 @@ class HrpRepository(
 
     /**
      * Endpoint 1: POST /api/auth/register
+     * Sends X-HRP-Client: android and reads data.token to persist Bearer session directly.
+     * Newly registered accounts always start with phoneVerified = false and no Worker/Assignment record.
      */
     suspend fun register(phone: String, password: String, fullName: String): Result<RegisterData> = withContext(Dispatchers.IO) {
         try {
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
             val response = api.register(RegisterRequest(phone = phone, password = password, fullName = fullName))
-            if (response.isSuccessful && response.data != null) {
-                Result.success(response.data)
+            val data = response.data
+            if (response.isSuccessful && data != null) {
+                val roleStr = data.role.ifBlank { "WORKER" }
+                if (!roleStr.equals("WORKER", ignoreCase = true)) {
+                    tokenManager?.clearToken()
+                    return@withContext Result.failure(
+                        Exception("Ứng dụng chỉ dành cho Người lao động. Vai trò '$roleStr' không được phép sử dụng trên mobile.")
+                    )
+                }
+
+                val resolvedName = data.fullName.takeIf { it.isNotBlank() } ?: fullName.trim()
+                val resolvedPhone = data.phone.takeIf { it.isNotBlank() } ?: phone.trim()
+                // Strictly respect backend phoneVerified (false on new registration; never auto-verify)
+                val isPhoneVerified = data.phoneVerified
+                val sessionToken = data.token?.takeIf { it.isNotBlank() } ?: tokenManager?.getToken()
+
+                if (!sessionToken.isNullOrBlank()) {
+                    tokenManager?.saveUserSession(
+                        token = sessionToken,
+                        phone = resolvedPhone,
+                        role = "WORKER",
+                        fullName = resolvedName,
+                        phoneVerified = isPhoneVerified,
+                        verificationStatus = "NONE",
+                        hasActiveAssignment = false
+                    )
+                }
+
+                _currentRole.value = UserRole.WORKER
+                _workerProfile.value = WorkerProfile(
+                    id = data.userId,
+                    employeeCode = "",
+                    fullName = resolvedName,
+                    cccdNumber = "",
+                    phone = resolvedPhone,
+                    factoryLocation = "",
+                    projectCode = "",
+                    department = "",
+                    position = "",
+                    baseSalaryPerDayVnd = 0L,
+                    joinedDate = "",
+                    bankAccount = "",
+                    status = "PENDING_VERIFICATION",
+                    phoneVerified = isPhoneVerified,
+                    verificationStatus = VerificationStatus.NONE,
+                    hasActiveAssignment = false,
+                    canCheckIn = false,
+                    projectName = "",
+                    sites = emptyList(),
+                    hasConfiguredSiteGps = true,
+                    siteGeofenceNotConfigured = false
+                )
+                _attendanceList.value = emptyList()
+                _tickets.value = emptyList()
+                _feedbackList.value = emptyList()
+                _referralList.value = emptyList()
+
+                if (!sessionToken.isNullOrBlank()) {
+                    loadInitialData()
+                }
+
+                Result.success(data)
             } else {
                 Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = response.message ?: "Đăng ký tài khoản thất bại"))
             }
@@ -351,18 +430,47 @@ class HrpRepository(
             tokenManager?.clearToken()
         } catch (_: Exception) {
         }
+        _workerProfile.value = WorkerProfile(
+            id = "",
+            employeeCode = "",
+            fullName = "Người Lao Động",
+            cccdNumber = "",
+            phone = "",
+            factoryLocation = "",
+            projectCode = "",
+            department = "",
+            position = "",
+            baseSalaryPerDayVnd = 0L,
+            joinedDate = "",
+            bankAccount = "",
+            status = "PENDING_VERIFICATION",
+            phoneVerified = false,
+            verificationStatus = VerificationStatus.NONE,
+            hasActiveAssignment = false,
+            canCheckIn = false
+        )
+        _attendanceList.value = emptyList()
+        _tickets.value = emptyList()
+        _feedbackList.value = emptyList()
+        _referralList.value = emptyList()
     }
 
     // ==================== DATA SYNC / REFRESH ====================
 
     suspend fun loadInitialData() = withContext(Dispatchers.IO) {
         fetchProfile()
-        fetchAttendance()
+        if (_workerProfile.value.canCheckIn || _workerProfile.value.hasActiveAssignment) {
+            fetchAttendance()
+        } else {
+            _attendanceList.value = emptyList()
+        }
         fetchTickets()
         fetchJobs()
         fetchReferralProgram()
         if (_workerProfile.value.canCheckIn || _workerProfile.value.hasActiveAssignment) {
             fetchMyReferrals()
+        } else {
+            _referralList.value = emptyList()
         }
     }
 
@@ -396,10 +504,14 @@ class HrpRepository(
             // If 404 WORKER_PROFILE_NOT_FOUND, keep user logged in as WORKER but mark canCheckIn=false, hasActiveAssignment=false
             if (parsed.code.equals("WORKER_PROFILE_NOT_FOUND", ignoreCase = true) || parsed.httpCode == 404) {
                 val fallbackPhone = _workerProfile.value.phone.ifBlank { tokenManager?.getPhone().orEmpty() }
-                val fallbackName = _workerProfile.value.fullName.ifBlank { tokenManager?.getFullName() ?: "Người Lao Động" }
+                val fallbackName = _workerProfile.value.fullName.takeIf { it.isNotBlank() && it != "Người Lao Động" }
+                    ?: tokenManager?.getFullName()?.takeIf { it.isNotBlank() }
+                    ?: "Người Lao Động"
+                val fallbackPhoneVerified = tokenManager?.isPhoneVerified() ?: _workerProfile.value.phoneVerified
                 _workerProfile.value = _workerProfile.value.copy(
                     fullName = fallbackName,
                     phone = fallbackPhone,
+                    phoneVerified = fallbackPhoneVerified,
                     verificationStatus = VerificationStatus.NONE,
                     hasActiveAssignment = false,
                     canCheckIn = false
@@ -522,12 +634,13 @@ class HrpRepository(
 
     /**
      * Endpoint 9: POST /api/public/jobs/{slug}/applications (Root JSON { trackingCode, status })
-     * Sends Idempotency-Key via HTTP Header per contract Section 6.2 & 14.3.B
+     * Sends Idempotency-Key via HTTP Header per contract Section 6.2 & 14.3.B.
+     * When authenticated as WORKER, omits fullName/phone so backend takes them from the logged-in account per Section 14.7.2.
      */
     suspend fun applyToJob(
         slug: String,
-        fullName: String,
-        phone: String,
+        fullName: String? = null,
+        phone: String? = null,
         experience: String? = null,
         dateOfBirth: String? = null,
         gender: String? = null,
@@ -536,9 +649,10 @@ class HrpRepository(
         try {
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
             val idempotencyKey = UUID.randomUUID().toString()
+            val isAuthenticated = tokenManager?.isLoggedIn() == true
             val req = JobApplicationRequest(
-                fullName = fullName,
-                phone = phone,
+                fullName = if (isAuthenticated) null else fullName?.takeIf { it.isNotBlank() },
+                phone = if (isAuthenticated) null else phone?.takeIf { it.isNotBlank() },
                 experience = experience,
                 dateOfBirth = dateOfBirth,
                 gender = gender,

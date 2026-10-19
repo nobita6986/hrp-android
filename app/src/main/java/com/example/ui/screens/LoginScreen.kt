@@ -247,7 +247,7 @@ fun LoginScreen(
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text("Mật khẩu") },
+                        label = { Text(if (isRegisterMode) "Mật khẩu (tối thiểu 8 ký tự)" else "Mật khẩu") },
                         placeholder = { Text("••••••••") },
                         leadingIcon = {
                             Icon(
@@ -274,10 +274,12 @@ fun LoginScreen(
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 focusManager.clearFocus()
-                                if (isRegisterMode && onRegister != null) {
-                                    onRegister(phone, password, fullName)
-                                } else {
-                                    onLogin(phone, password)
+                                if (!isAuthenticating) {
+                                    if (isRegisterMode && onRegister != null) {
+                                        onRegister(phone, password, fullName)
+                                    } else {
+                                        onLogin(phone, password)
+                                    }
                                 }
                             }
                         ),
@@ -291,6 +293,27 @@ fun LoginScreen(
                             .fillMaxWidth()
                             .testTag("login_password_input")
                     )
+
+                    AnimatedVisibility(visible = isRegisterMode) {
+                        Column {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = HrpPrimarySoft,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "Tài khoản mới có thể xem việc làm và ứng tuyển ngay. Số điện thoại khởi tạo ở trạng thái chưa xác minh OTP (phoneVerified=false); tính năng Góp ý cần xác minh OTP và Chấm công/Giới thiệu cần hồ sơ Worker được phân công ACTIVE.",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = HrpNavyDark,
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp
+                                    ),
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                        }
+                    }
 
                     // Error Alert Banner
                     AnimatedVisibility(

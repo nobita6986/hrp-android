@@ -212,12 +212,20 @@ fun ApplyJobModal(
     job: JobOpening,
     defaultName: String = "",
     defaultPhone: String = "",
+    isAuthenticated: Boolean = true,
+    phoneVerified: Boolean = false,
     onSubmit: (candidateName: String, phone: String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var candidateName by remember { mutableStateOf(defaultName) }
-    var phone by remember { mutableStateOf(defaultPhone) }
+    var candidateName by remember(defaultName) { mutableStateOf(defaultName) }
+    var phone by remember(defaultPhone) { mutableStateOf(defaultPhone) }
     var consentChecked by remember { mutableStateOf(true) }
+
+    val canSubmit = if (isAuthenticated) {
+        consentChecked
+    } else {
+        candidateName.isNotBlank() && phone.isNotBlank() && consentChecked
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -252,26 +260,87 @@ fun ApplyJobModal(
                     }
                 }
 
-                OutlinedTextField(
-                    value = candidateName,
-                    onValueChange = { candidateName = it },
-                    label = { Text("Họ và tên ứng viên") },
-                    placeholder = { Text("Nhập họ và tên của bạn") },
-                    modifier = Modifier.fillMaxWidth().testTag("apply_name_input"),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = HrpPrimary)
-                )
+                if (isAuthenticated) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = HrpSurfaceSubtle,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, HrpSurfaceBorder),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("apply_authenticated_account_info")
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Thông tin tài khoản ứng tuyển:",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = HrpNavyDark
+                                )
+                            )
+                            Text(
+                                text = "Họ và tên: ${defaultName.ifBlank { "Theo tài khoản đăng nhập" }}",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = HrpNavyDark,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 12.sp
+                                )
+                            )
+                            Text(
+                                text = "Số điện thoại: ${defaultPhone.ifBlank { "Theo tài khoản đăng nhập" }}",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = HrpNavyDark,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 12.sp
+                                )
+                            )
+                            Text(
+                                text = if (phoneVerified) {
+                                    "Trạng thái SĐT: Đã xác minh OTP"
+                                } else {
+                                    "Trạng thái SĐT: Chưa xác minh OTP (phoneVerified=false)"
+                                },
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = if (phoneVerified) HrpSuccess else HrpWarning,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 11.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Hệ thống tự động lấy Họ tên và Số điện thoại từ tài khoản đang đăng nhập — bạn không cần nhập lại.",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = HrpTextSecondary,
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                            )
+                        }
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = candidateName,
+                        onValueChange = { candidateName = it },
+                        label = { Text("Họ và tên ứng viên") },
+                        placeholder = { Text("Nhập họ và tên của bạn") },
+                        modifier = Modifier.fillMaxWidth().testTag("apply_name_input"),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = HrpPrimary)
+                    )
 
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text("Số điện thoại liên hệ") },
-                    placeholder = { Text("0987xxxxxx") },
-                    modifier = Modifier.fillMaxWidth().testTag("apply_phone_input"),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = HrpPrimary)
-                )
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { phone = it },
+                        label = { Text("Số điện thoại liên hệ") },
+                        placeholder = { Text("0987xxxxxx") },
+                        modifier = Modifier.fillMaxWidth().testTag("apply_phone_input"),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = HrpPrimary)
+                    )
+                }
 
                 Row(
                     modifier = Modifier
@@ -296,11 +365,11 @@ fun ApplyJobModal(
         confirmButton = {
             Button(
                 onClick = {
-                    if (candidateName.isNotBlank() && phone.isNotBlank() && consentChecked) {
+                    if (canSubmit) {
                         onSubmit(candidateName, phone)
                     }
                 },
-                enabled = candidateName.isNotBlank() && phone.isNotBlank() && consentChecked,
+                enabled = canSubmit,
                 colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary),
                 modifier = Modifier.testTag("apply_job_confirm_button")
             ) {

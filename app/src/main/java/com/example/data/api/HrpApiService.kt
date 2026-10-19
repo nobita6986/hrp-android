@@ -38,7 +38,7 @@ import retrofit2.http.Query
 
 /**
  * Retrofit API Service for HR Partner (HRP) Backend
- * Strictly aligned with the 17 endpoints in web-android-contract.md (SHA: 6D8755F8...)
+ * Strictly aligned with the 17 endpoints in web-android-contract.md (SHA: 9CB3FC00EBA235A5120C81247EC4F6830D8E0C7F16DDFC3A046C9EA4B8342CF0)
  */
 interface HrpApiService {
 
@@ -46,10 +46,12 @@ interface HrpApiService {
 
     /**
      * 1. POST /api/auth/register (Envelope)
+     * Header: X-HRP-Client: android (returns data.token in envelope)
      */
     @POST("auth/register")
     suspend fun register(
-        @Body req: RegisterRequest
+        @Body req: RegisterRequest,
+        @Header("X-HRP-Client") clientHeader: String = "android"
     ): ApiResponse<RegisterData>
 
     /**

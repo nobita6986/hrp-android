@@ -138,6 +138,14 @@ object ApiErrorParser {
     fun translateErrorCode(code: String, serverMessage: String?, fallback: String): String {
         return when (code.uppercase()) {
             "UNAUTHORIZED" -> serverMessage ?: "Phiên đăng nhập đã hết hạn hoặc thông tin xác thực không hợp lệ."
+            "PHONE_ALREADY_REGISTERED" ->
+                serverMessage ?: "Không thể tạo tài khoản với thông tin này. Nếu đã có tài khoản, vui lòng đăng nhập."
+            "REGISTRATION_UNAVAILABLE" ->
+                serverMessage ?: "Dịch vụ đăng ký tạm thời gián đoạn. Vui lòng thử lại sau."
+            "PROFILE_INCOMPLETE" ->
+                serverMessage ?: "Tài khoản chưa đủ họ tên và số điện thoại hợp lệ để ứng tuyển."
+            "VALIDATION_ERROR" ->
+                serverMessage ?: "Thông tin nhập vào chưa hợp lệ. Vui lòng kiểm tra lại."
             "FORBIDDEN_NOT_VERIFIED", "FORBIDDEN", "NOT_A_WORKER" ->
                 serverMessage ?: "Tài khoản chưa được Quản trị viên liên kết với hồ sơ Người lao động và phân công dự án (ACTIVE)."
             "WORKER_PROFILE_NOT_FOUND", "WORKER_NOT_FOUND" ->
@@ -179,7 +187,10 @@ data class RegisterRequest(
 data class RegisterData(
     @param:Json(name = "userId") val userId: String = "",
     @param:Json(name = "phone") val phone: String = "",
-    @param:Json(name = "phoneVerified") val phoneVerified: Boolean = false
+    @param:Json(name = "fullName") val fullName: String = "",
+    @param:Json(name = "role") val role: String = "WORKER",
+    @param:Json(name = "phoneVerified") val phoneVerified: Boolean = false,
+    @param:Json(name = "token") val token: String? = null
 )
 
 /**
@@ -374,6 +385,8 @@ data class WorkerAssignmentDto(
 data class MobileAccessDto(
     @param:Json(name = "phoneVerified") val phoneVerified: Boolean = false,
     @param:Json(name = "hasActiveAssignment") val hasActiveAssignment: Boolean = false,
+    @param:Json(name = "hasConfiguredSiteGps") val hasConfiguredSiteGps: Boolean? = null,
+    @param:Json(name = "siteGeofenceNotConfigured") val siteGeofenceNotConfigured: Boolean? = null,
     @param:Json(name = "canCheckIn") val canCheckIn: Boolean = false
 )
 
@@ -436,8 +449,8 @@ data class WorkerProfileResponse(
         val resolvedPosition = position?.takeIf { it.isNotBlank() }
             ?: resolvedAssignment?.position.orEmpty()
 
-        // If assignment includes sites list, check whether at least one site has confirmed GPS coordinates
-        val hasSiteGps = if (resolvedAssignment?.sites != null) {
+        // Prefer mobileAccess.hasConfiguredSiteGps when returned by backend, otherwise derive from assignment.sites
+        val calculatedSiteGps = if (resolvedAssignment?.sites != null) {
             rawSites.any {
                 it.latitude != null && it.longitude != null &&
                     (it.geoConfirmedAt != null || (it.geofenceRadiusMeters ?: it.radiusMeters ?: 0) > 0) &&
@@ -446,6 +459,9 @@ data class WorkerProfileResponse(
         } else {
             true
         }
+        val hasSiteGps = resolvedMobileAccess?.hasConfiguredSiteGps ?: calculatedSiteGps
+        val siteGeofenceMissing = resolvedMobileAccess?.siteGeofenceNotConfigured
+            ?: (!hasSiteGps && resolvedHasAssignment && resolvedAssignment?.sites != null)
 
         val resolvedVerificationStatus = when {
             verificationStatus != null -> VerificationStatus.fromString(verificationStatus)
@@ -480,7 +496,7 @@ data class WorkerProfileResponse(
             projectName = resolvedProjName,
             sites = resolvedSites,
             hasConfiguredSiteGps = hasSiteGps,
-            siteGeofenceNotConfigured = !hasSiteGps && resolvedHasAssignment && resolvedAssignment?.sites != null
+            siteGeofenceNotConfigured = siteGeofenceMissing
         )
     }
 }
@@ -596,10 +612,11 @@ data class JobOpeningResponse(
 
 /**
  * Endpoint 9: POST /api/public/jobs/{slug}/applications (Root JSON response { trackingCode, status })
+ * When authenticated as WORKER, fullName and phone can be omitted because backend reads them from the session account.
  */
 @JsonClass(generateAdapter = true)
 data class JobApplicationRequest(
-    @param:Json(name = "fullName") val fullName: String,
+    @param:Json(name = "fullName") val fullName: String? = null,
     @param:Json(name = "phone") val phone: String? = null,
     @param:Json(name = "experience") val experience: String? = null,
     @param:Json(name = "dateOfBirth") val dateOfBirth: String? = null,

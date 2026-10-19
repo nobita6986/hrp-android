@@ -14,20 +14,26 @@ class AuthInterceptor(private val tokenManager: TokenManager) : Interceptor {
         val requestBuilder = chain.request().newBuilder()
 
         if (!token.isNullOrEmpty()) {
-            requestBuilder.addHeader("Authorization", "Bearer $token")
-            requestBuilder.addHeader("Cookie", "hrp_session=$token")
+            requestBuilder.header("Authorization", "Bearer $token")
+            requestBuilder.header("Cookie", "hrp_session=$token; hrp_token=$token")
         }
 
-        requestBuilder.addHeader("Content-Type", "application/json")
-        requestBuilder.addHeader("Accept", "application/json")
+        requestBuilder.header("X-HRP-Client", "android")
+        requestBuilder.header("Content-Type", "application/json")
+        requestBuilder.header("Accept", "application/json")
 
         val response = chain.proceed(requestBuilder.build())
 
-        // Auto-extract hrp_session cookie if returned from web backend
+        // Auto-extract hrp_session or hrp_token cookie if returned from web backend
         val setCookieHeaders = response.headers("Set-Cookie")
         for (header in setCookieHeaders) {
-            if (header.contains("hrp_session=")) {
-                val extractedToken = header.substringAfter("hrp_session=").substringBefore(";").trim()
+            val cookieKey = when {
+                header.contains("hrp_session=") -> "hrp_session="
+                header.contains("hrp_token=") -> "hrp_token="
+                else -> null
+            }
+            if (cookieKey != null) {
+                val extractedToken = header.substringAfter(cookieKey).substringBefore(";").trim()
                 if (extractedToken.isNotEmpty() && extractedToken != "deleted") {
                     tokenManager.saveTokenSync(extractedToken)
                 }
@@ -37,3 +43,4 @@ class AuthInterceptor(private val tokenManager: TokenManager) : Interceptor {
         return response
     }
 }
+

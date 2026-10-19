@@ -133,6 +133,7 @@ class HrpViewModel(
     // ==================== AUTH & REGISTER METHODS ====================
 
     fun login(phone: String, pass: String) {
+        if (_isAuthenticating.value) return
         if (phone.isBlank() || pass.isBlank()) {
             _loginErrorMessage.value = "Vui lòng nhập đầy đủ Số điện thoại và Mật khẩu"
             return
@@ -155,12 +156,25 @@ class HrpViewModel(
     }
 
     fun register(phone: String, pass: String, fullName: String) {
-        if (fullName.isBlank() || phone.isBlank() || pass.isBlank()) {
+        if (_isAuthenticating.value) return
+        val trimmedName = fullName.trim()
+        val rawPhone = phone.trim().replace(" ", "").replace(".", "").replace("-", "")
+        val normalizedPhone = when {
+            rawPhone.startsWith("+84") -> "0${rawPhone.removePrefix("+84")}"
+            rawPhone.startsWith("84") && rawPhone.length == 11 -> "0${rawPhone.removePrefix("84")}"
+            else -> rawPhone
+        }
+
+        if (trimmedName.isBlank() || normalizedPhone.isBlank() || pass.isBlank()) {
             _loginErrorMessage.value = "Vui lòng nhập đầy đủ Họ tên, Số điện thoại và Mật khẩu"
             return
         }
-        if (pass.length < 6) {
-            _loginErrorMessage.value = "Mật khẩu cần tối thiểu 6 ký tự"
+        if (!Regex("^0\\d{9}$").matches(normalizedPhone)) {
+            _loginErrorMessage.value = "Số điện thoại không hợp lệ (cần 10 chữ số bắt đầu bằng số 0)"
+            return
+        }
+        if (pass.length < 8) {
+            _loginErrorMessage.value = "Mật khẩu cần tối thiểu 8 ký tự"
             return
         }
 
@@ -168,16 +182,23 @@ class HrpViewModel(
             _isAuthenticating.value = true
             _loginErrorMessage.value = null
 
-            val registerResult = repository.register(phone.trim(), pass.trim(), fullName.trim())
-            registerResult.onSuccess {
-                // Automatically log in after successful registration
-                val loginResult = repository.login(phone.trim(), pass.trim())
-                _isAuthenticating.value = false
-                loginResult.onSuccess {
+            val registerResult = repository.register(normalizedPhone, pass, trimmedName)
+            registerResult.onSuccess { data ->
+                if (!data.token.isNullOrBlank() || tokenManager.isLoggedIn()) {
+                    _isAuthenticating.value = false
+                    _currentTab.value = NavigationTab.HOME
                     _isLoggedIn.value = true
-                    _toastMessage.value = "Đăng ký tài khoản thành công!"
-                }.onFailure {
-                    _toastMessage.value = "Đăng ký thành công! Vui lòng đăng nhập."
+                    _toastMessage.value = "Đăng ký tài khoản thành công! Số điện thoại chưa xác minh OTP (phoneVerified=false)."
+                } else {
+                    val loginResult = repository.login(normalizedPhone, pass)
+                    _isAuthenticating.value = false
+                    loginResult.onSuccess {
+                        _currentTab.value = NavigationTab.HOME
+                        _isLoggedIn.value = true
+                        _toastMessage.value = "Đăng ký tài khoản thành công!"
+                    }.onFailure {
+                        _toastMessage.value = "Đăng ký thành công! Vui lòng đăng nhập."
+                    }
                 }
             }.onFailure { err ->
                 _isAuthenticating.value = false
@@ -326,12 +347,16 @@ class HrpViewModel(
             when (tab) {
                 NavigationTab.HOME -> {
                     repository.fetchProfile()
-                    repository.fetchAttendance()
+                    if (workerProfile.value.canCheckIn || workerProfile.value.hasActiveAssignment) {
+                        repository.fetchAttendance()
+                    }
                 }
                 NavigationTab.JOBS -> repository.fetchJobs()
                 NavigationTab.ATTENDANCE -> {
                     repository.fetchProfile()
-                    repository.fetchAttendance()
+                    if (workerProfile.value.canCheckIn || workerProfile.value.hasActiveAssignment) {
+                        repository.fetchAttendance()
+                    }
                 }
                 NavigationTab.FEEDBACK -> repository.fetchMyFeedback()
                 NavigationTab.REFERRAL -> {

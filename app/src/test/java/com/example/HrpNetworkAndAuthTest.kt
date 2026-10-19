@@ -303,7 +303,7 @@ class HrpNetworkAndAuthTest {
     }
 
     @Test
-    fun `test AuthInterceptor attaches Bearer token when token is present`() {
+    fun `test AuthInterceptor attaches Bearer token and X-HRP-Client android header`() {
         var interceptedRequest: Request? = null
 
         val fakeChain = object : Interceptor.Chain {
@@ -339,8 +339,36 @@ class HrpNetworkAndAuthTest {
         interceptor.intercept(fakeChain)
 
         assertEquals("Bearer test_bearer_jwt_token_456", interceptedRequest?.header("Authorization"))
-        assertEquals("hrp_session=test_bearer_jwt_token_456", interceptedRequest?.header("Cookie"))
+        assertEquals("hrp_session=test_bearer_jwt_token_456; hrp_token=test_bearer_jwt_token_456", interceptedRequest?.header("Cookie"))
+        assertEquals("android", interceptedRequest?.header("X-HRP-Client"))
         assertEquals("application/json", interceptedRequest?.header("Content-Type"))
         assertEquals("application/json", interceptedRequest?.header("Accept"))
     }
+
+    @Test
+    fun `test RegisterData and registration error codes match contract section 14_7`() {
+        val regData = com.example.data.api.model.RegisterData(
+            userId = "usr-999",
+            phone = "0912345678",
+            fullName = "Nguyễn Văn Mới",
+            role = "WORKER",
+            phoneVerified = false,
+            token = "jwt_register_token_abc"
+        )
+        assertEquals("usr-999", regData.userId)
+        assertEquals("0912345678", regData.phone)
+        assertEquals("Nguyễn Văn Mới", regData.fullName)
+        assertEquals("WORKER", regData.role)
+        assertFalse(regData.phoneVerified)
+        assertEquals("jwt_register_token_abc", regData.token)
+
+        val conflictErr = ApiErrorParser.fromApiError(ApiError(code = "PHONE_ALREADY_REGISTERED", message = ""), 409)
+        assertEquals("PHONE_ALREADY_REGISTERED", conflictErr.code)
+        assertTrue(conflictErr.message.contains("đăng nhập"))
+
+        val profileIncErr = ApiErrorParser.fromApiError(ApiError(code = "PROFILE_INCOMPLETE", message = ""), 422)
+        assertEquals("PROFILE_INCOMPLETE", profileIncErr.code)
+        assertTrue(profileIncErr.message.contains("họ tên"))
+    }
 }
+

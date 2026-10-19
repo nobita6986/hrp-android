@@ -373,6 +373,8 @@ fun HrpApp(
             job = job,
             defaultName = workerProfile.fullName.takeIf { it != "Người Lao Động" } ?: "",
             defaultPhone = workerProfile.phone,
+            isAuthenticated = true,
+            phoneVerified = workerProfile.phoneVerified,
             onSubmit = { name, phone ->
                 viewModel.submitApplication(job.slug, name, phone)
             },
