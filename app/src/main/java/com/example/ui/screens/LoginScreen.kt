@@ -422,7 +422,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "Tổng đài hỗ trợ người lao động KCN: 1900 6868",
+                text = "Tổng đài hỗ trợ người lao động HRP: 0211.2216.999",
                 style = MaterialTheme.typography.bodySmall.copy(
                     color = HrpTextSecondary.copy(alpha = 0.8f),
                     fontSize = 11.sp

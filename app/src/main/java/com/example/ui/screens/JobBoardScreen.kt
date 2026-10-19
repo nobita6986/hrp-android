@@ -178,7 +178,7 @@ private fun JobBoardHeroBanner() {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "HỆ THỐNG VIỆC LÀM KCN HRP",
+                text = "HỆ THỐNG VIỆC LÀM HRP",
                 style = MaterialTheme.typography.labelSmall.copy(
                     color = HrpPrimary,
                     fontWeight = FontWeight.Bold,
