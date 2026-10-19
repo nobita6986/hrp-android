@@ -27,16 +27,6 @@ class LocationHelper(private val context: Context) {
         LocationServices.getFusedLocationProviderClient(context)
 
     companion object {
-        // Factory Geofence Coordinates
-        // Samsung SEVT - Phổ Yên, Thái Nguyên (Gate B)
-        const val SEVT_LAT = 21.4925
-        const val SEVT_LNG = 105.8239
-        const val GEOFENCE_RADIUS_METERS = 800f
-
-        // Foxconn Quang Châu - Bắc Giang
-        const val FOXCONN_LAT = 21.2468
-        const val FOXCONN_LNG = 106.1432
-
         fun hasLocationPermission(context: Context): Boolean {
             val fine = ContextCompat.checkSelfPermission(
                 context,
@@ -64,59 +54,20 @@ class LocationHelper(private val context: Context) {
                 cts.token
             ).addOnSuccessListener { location: Location? ->
                 if (location != null) {
-                    val result = evaluateLocation(location)
-                    continuation.resume(result)
+                    continuation.resume(evaluateLocation(location))
                 } else {
-                    // Fallback to last known location
                     fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc ->
                         if (lastLoc != null) {
                             continuation.resume(evaluateLocation(lastLoc))
                         } else {
-                            if (AppConfig.isDemoMode) {
-                                continuation.resume(
-                                    GpsLocationResult(
-                                        latitude = SEVT_LAT,
-                                        longitude = SEVT_LNG,
-                                        accuracyMeters = 8.5f,
-                                        isInsideGeofence = true,
-                                        matchedSite = "Cổng B - Samsung SEVT (Thái Nguyên) [Demo]"
-                                    )
-                                )
-                            } else {
-                                // Strictly REAL GPS required in production / debug
-                                continuation.resume(null)
-                            }
-                        }
-                    }.addOnFailureListener {
-                        if (AppConfig.isDemoMode) {
-                            continuation.resume(
-                                GpsLocationResult(
-                                    latitude = SEVT_LAT,
-                                    longitude = SEVT_LNG,
-                                    accuracyMeters = 10f,
-                                    isInsideGeofence = true,
-                                    matchedSite = "Cổng B - Samsung SEVT (Thái Nguyên) [Demo]"
-                                )
-                            )
-                        } else {
                             continuation.resume(null)
                         }
+                    }.addOnFailureListener {
+                        continuation.resume(null)
                     }
                 }
             }.addOnFailureListener {
-                if (AppConfig.isDemoMode) {
-                    continuation.resume(
-                        GpsLocationResult(
-                            latitude = SEVT_LAT,
-                            longitude = SEVT_LNG,
-                            accuracyMeters = 12f,
-                            isInsideGeofence = true,
-                            matchedSite = "Cổng B - Samsung SEVT (Thái Nguyên) [Demo]"
-                        )
-                    )
-                } else {
-                    continuation.resume(null)
-                }
+                continuation.resume(null)
             }
 
             continuation.invokeOnCancellation {
@@ -126,29 +77,18 @@ class LocationHelper(private val context: Context) {
     }
 
     private fun evaluateLocation(location: Location): GpsLocationResult {
-        val results = FloatArray(1)
-        Location.distanceBetween(
+        val siteDescription = "Tọa độ thực tế (%.5f, %.5f • Sai số: ±%.1fm)".format(
             location.latitude,
             location.longitude,
-            SEVT_LAT,
-            SEVT_LNG,
-            results
+            location.accuracy
         )
-        val distanceMeters = results[0]
-        val isInside = distanceMeters <= GEOFENCE_RADIUS_METERS
-
-        val site = if (isInside) {
-            "Cổng B - Samsung SEVT (Sai số: %.1fm)".format(location.accuracy)
-        } else {
-            "Vị trí GPS ngoài nhà máy (Cách cổng %.0fm)".format(distanceMeters)
-        }
 
         return GpsLocationResult(
             latitude = location.latitude,
             longitude = location.longitude,
             accuracyMeters = location.accuracy,
-            isInsideGeofence = isInside || location.isFromMockProvider,
-            matchedSite = site
+            isInsideGeofence = true, // Server evaluates geofence against assigned project coordinates & radius
+            matchedSite = siteDescription
         )
     }
 }

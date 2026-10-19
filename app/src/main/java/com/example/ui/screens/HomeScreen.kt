@@ -22,7 +22,9 @@ import androidx.compose.material.icons.filled.AssignmentTurnedIn
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MonetizationOn
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -46,14 +48,18 @@ import com.example.data.model.AttendanceDay
 import com.example.data.model.AttendanceStatus
 import com.example.data.model.TicketItem
 import com.example.data.model.TicketType
+import com.example.data.model.VerificationStatus
 import com.example.data.model.WorkerProfile
+import com.example.data.model.WorkerVerificationInfo
 import com.example.ui.components.HrpSectionHeader
 import com.example.ui.components.TicketStatusBadge
 import com.example.ui.theme.HrpBackground
+import com.example.ui.theme.HrpError
 import com.example.ui.theme.HrpInfo
 import com.example.ui.theme.HrpNavyDark
 import com.example.ui.theme.HrpNavySurface
 import com.example.ui.theme.HrpPrimary
+import com.example.ui.theme.HrpPrimarySoft
 import com.example.ui.theme.HrpSuccess
 import com.example.ui.theme.HrpSurface
 import com.example.ui.theme.HrpSurfaceBorder
@@ -64,6 +70,7 @@ import com.example.ui.viewmodel.NavigationTab
 @Composable
 fun HomeScreen(
     workerProfile: WorkerProfile,
+    verificationInfo: WorkerVerificationInfo? = null,
     attendanceList: List<AttendanceDay>,
     tickets: List<TicketItem>,
     onNavigateTab: (NavigationTab) -> Unit,
@@ -71,10 +78,13 @@ fun HomeScreen(
     onCheckOut: () -> Unit,
     onRequestAdvanceSalary: () -> Unit,
     onCreateTicket: (TicketType) -> Unit,
+    onOpenPhoneOtp: () -> Unit = {},
+    onOpenWorkerVerification: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val approvedDays = attendanceList.count { it.status == AttendanceStatus.APPROVED }.toDouble()
     val otHours = attendanceList.sumOf { it.otHours }
+    val resolvedVerificationStatus = verificationInfo?.status ?: workerProfile.verificationStatus
 
     LazyColumn(
         modifier = modifier
@@ -89,9 +99,32 @@ fun HomeScreen(
         item {
             WorkerHeroCard(
                 profile = workerProfile,
+                verificationStatus = resolvedVerificationStatus,
                 onCheckIn = onCheckIn,
-                onCheckOut = onCheckOut
+                onCheckOut = onCheckOut,
+                onOpenWorkerVerification = onOpenWorkerVerification
             )
+        }
+
+        // Phone OTP Verification Banner (if phone not yet verified)
+        if (!workerProfile.phoneVerified) {
+            item {
+                PhoneVerificationCard(
+                    phone = workerProfile.phone,
+                    onVerifyClick = onOpenPhoneOtp
+                )
+            }
+        }
+
+        // Worker Verification Status Banner (if not yet APPROVED)
+        if (resolvedVerificationStatus != VerificationStatus.APPROVED) {
+            item {
+                WorkerVerificationStatusCard(
+                    status = resolvedVerificationStatus,
+                    reviewNote = verificationInfo?.reviewNote,
+                    onActionClick = onOpenWorkerVerification
+                )
+            }
         }
 
         // Quick attendance statistics
@@ -106,7 +139,7 @@ fun HomeScreen(
         item {
             HrpSectionHeader(
                 title = "Lối Tắt Hỗ Trợ Công Nhân",
-                subtitle = "Gửi yêu cầu trực tiếp đến bộ phận hỗ trợ"
+                subtitle = "Gửi yêu cầu hoặc góp ý trực tiếp đến bộ phận hỗ trợ"
             )
         }
 
@@ -139,11 +172,169 @@ fun HomeScreen(
 }
 
 @Composable
+private fun PhoneVerificationCard(
+    phone: String,
+    onVerifyClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = HrpSurface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, HrpWarning.copy(alpha = 0.5f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(HrpWarning.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PhoneAndroid,
+                    contentDescription = null,
+                    tint = HrpWarning,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Xác thực số điện thoại",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = HrpNavyDark
+                    )
+                )
+                Text(
+                    text = if (phone.isNotBlank()) "SĐT $phone chưa xác thực OTP" else "Xác thực OTP để bảo vệ tài khoản",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = HrpTextSecondary,
+                        fontSize = 11.sp
+                    )
+                )
+            }
+            OutlinedButton(
+                onClick = onVerifyClick,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.testTag("home_verify_phone_button")
+            ) {
+                Text("Xác thực", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = HrpPrimary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkerVerificationStatusCard(
+    status: VerificationStatus,
+    reviewNote: String?,
+    onActionClick: () -> Unit
+) {
+    val (badgeColor, titleText, subtitleText, buttonLabel) = when (status) {
+        VerificationStatus.PENDING_REVIEW -> listOf(
+            HrpWarning,
+            "Hồ sơ công nhân đang chờ HR đối soát",
+            "Bộ phận Nhân sự đang kiểm tra thông tin CCCD và mã nhân viên dự án của bạn.",
+            "Xem trạng thái"
+        )
+        VerificationStatus.NEEDS_INFO -> listOf(
+            HrpError,
+            "Cần bổ sung thông tin xác thực công nhân",
+            reviewNote?.takeIf { it.isNotBlank() } ?: "Vui lòng kiểm tra lại CCCD hoặc Mã nhân viên và gửi lại.",
+            "Cập nhật lại"
+        )
+        VerificationStatus.REJECTED -> listOf(
+            HrpError,
+            "Yêu cầu xác thực công nhân bị từ chối",
+            reviewNote?.takeIf { it.isNotBlank() } ?: "Thông tin không khớp với danh sách dự án. Vui lòng gửi lại hồ sơ chính xác.",
+            "Gửi lại hồ sơ"
+        )
+        else -> listOf(
+            HrpPrimary,
+            "Xác thực Công nhân HRP để mở khóa Chấm công",
+            "Dành cho NLĐ đã nhận việc: Liên kết CCCD & Mã nhân viên dự án để chấm công GPS và giới thiệu người làm.",
+            "Xác thực ngay"
+        )
+    }
+
+    val accentColor = badgeColor as Color
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = HrpSurface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, accentColor.copy(alpha = 0.4f))
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(accentColor.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VerifiedUser,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = titleText as String,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = HrpNavyDark
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = subtitleText as String,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = HrpTextSecondary,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Button(
+                onClick = onActionClick,
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("home_worker_verification_button")
+            ) {
+                Text(buttonLabel as String, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
 private fun WorkerHeroCard(
     profile: WorkerProfile,
+    verificationStatus: VerificationStatus,
     onCheckIn: () -> Unit,
-    onCheckOut: () -> Unit
+    onCheckOut: () -> Unit,
+    onOpenWorkerVerification: () -> Unit
 ) {
+    val isApprovedWorker = verificationStatus == VerificationStatus.APPROVED
+    val badgeBg = if (isApprovedWorker) HrpSuccess.copy(alpha = 0.2f) else HrpWarning.copy(alpha = 0.2f)
+    val badgeColor = if (isApprovedWorker) HrpSuccess else HrpWarning
+    val badgeLabel = if (isApprovedWorker) "ĐÃ XÁC THỰC" else verificationStatus.label.uppercase()
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -186,7 +377,7 @@ private fun WorkerHeroCard(
                         )
                     )
                     Text(
-                        text = "Mã NV: ${profile.employeeCode.ifBlank { "Chưa cấp" }} • ${profile.position.ifBlank { "Công nhân" }}",
+                        text = "Mã NV: ${profile.employeeCode.ifBlank { "Chưa liên kết" }} • ${profile.position.ifBlank { "Người lao động" }}",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = 12.sp
@@ -196,12 +387,12 @@ private fun WorkerHeroCard(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(HrpSuccess.copy(alpha = 0.2f))
+                        .background(badgeBg)
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = "HOẠT ĐỘNG",
-                        color = HrpSuccess,
+                        text = badgeLabel,
+                        color = badgeColor,
                         fontWeight = FontWeight.Bold,
                         fontSize = 10.sp
                     )
@@ -227,7 +418,7 @@ private fun WorkerHeroCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = profile.factoryLocation.ifBlank { "Chưa phân công địa điểm làm việc" },
+                    text = profile.factoryLocation.ifBlank { "Chưa phân công dự án làm việc" },
                     style = MaterialTheme.typography.bodySmall.copy(
                         color = Color.White,
                         fontSize = 12.sp
@@ -238,44 +429,65 @@ private fun WorkerHeroCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Check-in action bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = onCheckIn,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("button_check_in"),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary)
+            // Check-in action bar (gated by Worker Verification approval)
+            if (isApprovedWorker) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.AccessTime,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Vào Ca (GPS)", fontWeight = FontWeight.Bold)
-                }
+                    Button(
+                        onClick = onCheckIn,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("button_check_in"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccessTime,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Vào Ca (GPS)", fontWeight = FontWeight.Bold)
+                    }
 
+                    OutlinedButton(
+                        onClick = onCheckOut,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("button_check_out"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AssignmentTurnedIn,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Tan Ca (GPS)", fontWeight = FontWeight.Bold)
+                    }
+                }
+            } else {
                 OutlinedButton(
-                    onClick = onCheckOut,
+                    onClick = onOpenWorkerVerification,
                     modifier = Modifier
-                        .weight(1f)
-                        .testTag("button_check_out"),
+                        .fillMaxWidth()
+                        .testTag("button_require_verification"),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, HrpPrimary)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.AssignmentTurnedIn,
+                        imageVector = Icons.Default.VerifiedUser,
                         contentDescription = null,
+                        tint = HrpPrimary,
                         modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Tan Ca", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cần xác thực công nhân HRP để chấm công GPS", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         }
@@ -335,16 +547,16 @@ private fun WorkerQuickActions(
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         ActionTile(
-            title = "Tạm Ứng Lương",
-            subtitle = "Gửi yêu cầu",
+            title = "Chế Độ & Lương",
+            subtitle = "Hỏi đáp, phản ánh",
             icon = Icons.Default.MonetizationOn,
             color = HrpPrimary,
             modifier = Modifier.weight(1f),
             onClick = onAdvanceSalary
         )
         ActionTile(
-            title = "Xin Nghỉ Phép",
-            subtitle = "Phép năm, ốm",
+            title = "Môi Trường Làm Việc",
+            subtitle = "An toàn, ca kíp",
             icon = Icons.Default.DateRange,
             color = HrpInfo,
             modifier = Modifier.weight(1f),

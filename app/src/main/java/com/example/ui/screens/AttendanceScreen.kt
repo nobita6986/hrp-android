@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,14 +16,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.ReportProblem
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -34,7 +30,6 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,34 +40,35 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AttendanceDay
 import com.example.data.model.AttendanceStatus
-import com.example.data.model.TicketType
-import com.example.data.model.UserRole
+import com.example.data.model.VerificationStatus
+import com.example.data.model.WorkerProfile
 import com.example.ui.components.AttendanceStatusBadge
 import com.example.ui.components.HrpSectionHeader
 import com.example.ui.theme.HrpBackground
+import com.example.ui.theme.HrpError
 import com.example.ui.theme.HrpNavyDark
+import com.example.ui.theme.HrpNavySurface
 import com.example.ui.theme.HrpPrimary
-import com.example.ui.theme.HrpPrimarySoft
 import com.example.ui.theme.HrpSuccess
 import com.example.ui.theme.HrpSurface
 import com.example.ui.theme.HrpSurfaceBorder
 import com.example.ui.theme.HrpSurfaceSubtle
-import com.example.ui.theme.HrpTextPrimary
 import com.example.ui.theme.HrpTextSecondary
 import com.example.ui.theme.HrpWarning
 
 @Composable
 fun AttendanceScreen(
     attendanceList: List<AttendanceDay>,
+    workerProfile: WorkerProfile? = null,
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit,
     onDisputeAttendance: (AttendanceDay) -> Unit,
+    onOpenWorkerVerification: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedFilter by remember { mutableStateOf<AttendanceStatus?>(null) }
@@ -82,6 +78,9 @@ fun AttendanceScreen(
     } else {
         attendanceList.filter { it.status == selectedFilter }
     }
+
+    val isApprovedWorker = workerProfile == null || workerProfile.verificationStatus == VerificationStatus.APPROVED
+    val siteSubtitle = workerProfile?.factoryLocation?.takeIf { it.isNotBlank() } ?: "Dự án HRP được phân công"
 
     LazyColumn(
         modifier = modifier
@@ -95,24 +94,23 @@ fun AttendanceScreen(
         // Attendance summary banner
         item {
             AttendanceSummaryBanner(
+                siteSubtitle = siteSubtitle,
+                isApprovedWorker = isApprovedWorker,
                 totalDays = attendanceList.size,
                 approvedDays = attendanceList.count { it.status == AttendanceStatus.APPROVED },
                 totalOtHours = attendanceList.sumOf { it.otHours },
                 onCheckIn = onCheckIn,
-                onCheckOut = onCheckOut
+                onCheckOut = onCheckOut,
+                onOpenWorkerVerification = onOpenWorkerVerification
             )
         }
 
-        // Interactive mini calendar bar
+        // Section header
         item {
             HrpSectionHeader(
-                title = "Lịch Chấm Công Tháng 10/2026",
-                subtitle = "Bấm vào ngày để xem chi tiết quẹt thẻ"
+                title = "Lịch Sử Chấm Công Thực Tế",
+                subtitle = "Dữ liệu đồng bộ trực tiếp từ hệ thống HRP"
             )
-        }
-
-        item {
-            AttendanceCalendarRow(attendanceList = attendanceList)
         }
 
         // Filter chips
@@ -157,9 +155,9 @@ fun AttendanceScreen(
                     FilterChip(
                         selected = selectedFilter == AttendanceStatus.DISPUTED,
                         onClick = { selectedFilter = AttendanceStatus.DISPUTED },
-                        label = { Text("Khiếu nại (${attendanceList.count { it.status == AttendanceStatus.DISPUTED }})") },
+                        label = { Text("Ngoài vùng / Khiếu nại (${attendanceList.count { it.status == AttendanceStatus.DISPUTED }})") },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = com.example.ui.theme.HrpError,
+                            selectedContainerColor = HrpError,
                             selectedLabelColor = Color.White
                         )
                     )
@@ -167,12 +165,40 @@ fun AttendanceScreen(
             }
         }
 
-        // Attendance records list
-        items(filteredList, key = { it.id }) { day ->
-            AttendanceCardItem(
-                day = day,
-                onDispute = { onDisputeAttendance(day) }
-            )
+        // Attendance records list or empty state
+        if (filteredList.isEmpty()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = HrpSurface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, HrpSurfaceBorder)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (isApprovedWorker) {
+                                "Chưa có bản ghi chấm công nào trong kỳ này."
+                            } else {
+                                "Vui lòng hoàn tất xác thực công nhân HRP để bắt đầu chấm công GPS và xem bảng công."
+                            },
+                            color = HrpTextSecondary,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        } else {
+            items(filteredList, key = { it.id }) { day ->
+                AttendanceCardItem(
+                    day = day,
+                    onDispute = { onDisputeAttendance(day) }
+                )
+            }
         }
 
         item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -181,11 +207,14 @@ fun AttendanceScreen(
 
 @Composable
 private fun AttendanceSummaryBanner(
+    siteSubtitle: String,
+    isApprovedWorker: Boolean,
     totalDays: Int,
     approvedDays: Int,
     totalOtHours: Double,
     onCheckIn: () -> Unit,
-    onCheckOut: () -> Unit
+    onCheckOut: () -> Unit,
+    onOpenWorkerVerification: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -198,9 +227,9 @@ private fun AttendanceSummaryBanner(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "CHẤM CÔNG 3 TẦNG (HRP V4)",
+                        text = "CHẤM CÔNG ĐỊNH VỊ GPS",
                         style = MaterialTheme.typography.labelSmall.copy(
                             color = HrpPrimary,
                             fontWeight = FontWeight.Bold,
@@ -209,23 +238,26 @@ private fun AttendanceSummaryBanner(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Thái Nguyên • Hôm nay 18/10",
+                        text = siteSubtitle,
                         style = MaterialTheme.typography.titleMedium.copy(
                             color = Color.White,
                             fontWeight = FontWeight.Bold
-                        )
+                        ),
+                        maxLines = 1
                     )
                 }
 
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(HrpSuccess.copy(alpha = 0.2f))
+                        .background(
+                            if (isApprovedWorker) HrpSuccess.copy(alpha = 0.2f) else HrpWarning.copy(alpha = 0.2f)
+                        )
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = "GPS HỢP LỆ",
-                        color = HrpSuccess,
+                        text = if (isApprovedWorker) "ĐỦ ĐIỀU KIỆN" else "CHƯA XÁC THỰC",
+                        color = if (isApprovedWorker) HrpSuccess else HrpWarning,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp
                     )
@@ -239,7 +271,7 @@ private fun AttendanceSummaryBanner(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(com.example.ui.theme.HrpNavySurface)
+                    .background(HrpNavySurface)
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -259,88 +291,42 @@ private fun AttendanceSummaryBanner(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = onCheckIn,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary)
+            if (isApprovedWorker) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(imageVector = Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Vào Ca", fontWeight = FontWeight.Bold)
+                    Button(
+                        onClick = onCheckIn,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary)
+                    ) {
+                        Icon(imageVector = Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Vào Ca (GPS)", fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = onCheckOut,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
+                    ) {
+                        Text("Tan Ca (GPS)", fontWeight = FontWeight.Bold)
+                    }
                 }
+            } else {
                 OutlinedButton(
-                    onClick = onCheckOut,
-                    modifier = Modifier.weight(1f),
+                    onClick = onOpenWorkerVerification,
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, HrpPrimary)
                 ) {
-                    Text("Tan Ca", fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AttendanceCalendarRow(attendanceList: List<AttendanceDay>) {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        val days = listOf("13", "14", "15", "16", "17", "18")
-        val weekdays = listOf("T3", "T4", "T5", "T6", "T7", "CN")
-
-        items(days.indices.toList()) { index ->
-            val dayNum = days[index]
-            val weekday = weekdays[index]
-            val isToday = dayNum == "18"
-
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = if (isToday) HrpNavyDark else HrpSurface,
-                border = androidx.compose.foundation.BorderStroke(
-                    width = if (isToday) 2.dp else 1.dp,
-                    color = if (isToday) HrpPrimary else HrpSurfaceBorder
-                ),
-                modifier = Modifier.width(52.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(vertical = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = weekday,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = if (isToday) Color.White.copy(alpha = 0.7f) else HrpTextSecondary,
-                            fontSize = 11.sp
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = dayNum,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = if (isToday) Color.White else HrpNavyDark
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(
-                                when (dayNum) {
-                                    "13" -> com.example.ui.theme.HrpError
-                                    "18" -> HrpWarning
-                                    else -> HrpSuccess
-                                }
-                            )
-                    )
+                    Icon(imageVector = Icons.Default.VerifiedUser, contentDescription = null, tint = HrpPrimary, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Xác thực công nhân HRP để mở khóa chấm công", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         }
@@ -367,7 +353,11 @@ private fun AttendanceCardItem(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "${day.dayOfWeek}, ${day.dateString}",
+                        text = if (day.dayOfWeek != day.dateString && day.dayOfWeek.isNotBlank()) {
+                            "${day.dayOfWeek}, ${day.dateString}"
+                        } else {
+                            day.dateString
+                        },
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                     )
                 }
@@ -376,10 +366,25 @@ private fun AttendanceCardItem(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            Text(
-                text = day.shiftName,
-                style = MaterialTheme.typography.bodySmall.copy(color = HrpPrimary, fontWeight = FontWeight.Medium)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = day.shiftName,
+                    style = MaterialTheme.typography.bodySmall.copy(color = HrpPrimary, fontWeight = FontWeight.Medium)
+                )
+                day.geofenceResult?.let { gf ->
+                    Text(
+                        text = if (gf.equals("INSIDE", ignoreCase = true)) "GPS: Trong vùng" else "GPS: $gf",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = if (gf.equals("INSIDE", ignoreCase = true)) HrpSuccess else HrpError,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(10.dp))
 
@@ -449,8 +454,8 @@ private fun AttendanceCardItem(
                 )
                 if (day.status == AttendanceStatus.DISPUTED) {
                     Text(
-                        text = "Đang xử lý khiếu nại",
-                        style = MaterialTheme.typography.labelSmall.copy(color = com.example.ui.theme.HrpError, fontWeight = FontWeight.Bold)
+                        text = "Cần kiểm tra",
+                        style = MaterialTheme.typography.labelSmall.copy(color = HrpError, fontWeight = FontWeight.Bold)
                     )
                 } else {
                     Text(
@@ -469,7 +474,7 @@ private fun AttendanceCardItem(
                 Text(
                     text = "Ghi chú: ${day.note}",
                     style = MaterialTheme.typography.bodySmall.copy(
-                        color = if (day.status == AttendanceStatus.DISPUTED) com.example.ui.theme.HrpError else HrpTextSecondary,
+                        color = if (day.status == AttendanceStatus.DISPUTED) HrpError else HrpTextSecondary,
                         fontSize = 11.sp
                     )
                 )

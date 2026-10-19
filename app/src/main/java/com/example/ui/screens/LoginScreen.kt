@@ -5,7 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,15 +24,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -46,6 +42,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,12 +66,10 @@ import com.example.R
 import com.example.ui.theme.HrpBackground
 import com.example.ui.theme.HrpError
 import com.example.ui.theme.HrpNavyDark
-import com.example.ui.theme.HrpNavySurface
 import com.example.ui.theme.HrpPrimary
 import com.example.ui.theme.HrpPrimarySoft
 import com.example.ui.theme.HrpSurface
 import com.example.ui.theme.HrpSurfaceBorder
-import com.example.ui.theme.HrpTextPrimary
 import com.example.ui.theme.HrpTextSecondary
 
 @Composable
@@ -82,9 +77,12 @@ fun LoginScreen(
     isAuthenticating: Boolean,
     errorMessage: String?,
     onLogin: (phone: String, pass: String) -> Unit,
+    onRegister: ((phone: String, pass: String, fullName: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isDemo = com.example.utils.AppConfig.isDemoMode
+    var isRegisterMode by remember { mutableStateOf(false) }
+    var fullName by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf(if (isDemo) "0987654321" else "") }
     var password by remember { mutableStateOf(if (isDemo) "123456" else "") }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -132,7 +130,7 @@ fun LoginScreen(
             )
 
             Text(
-                text = "Hệ Thống Quản Lý Nhân Sự & Chấm Công Di Động",
+                text = "Ứng Dụng Dành Cho Người Lao Động & Tìm Việc",
                 style = MaterialTheme.typography.bodyMedium.copy(
                     color = HrpTextSecondary,
                     fontSize = 13.sp
@@ -141,7 +139,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Login Form Card
+            // Login / Register Form Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -155,7 +153,7 @@ fun LoginScreen(
                         .padding(20.dp)
                 ) {
                     Text(
-                        text = "Đăng Nhập Tài Khoản",
+                        text = if (isRegisterMode) "Đăng Ký Tài Khoản Mới" else "Đăng Nhập Tài Khoản",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = HrpNavyDark,
@@ -163,7 +161,11 @@ fun LoginScreen(
                         )
                     )
                     Text(
-                        text = "Sử dụng số điện thoại đã đăng ký với nhà máy",
+                        text = if (isRegisterMode) {
+                            "Tạo tài khoản Người lao động để ứng tuyển và xác thực chấm công"
+                        } else {
+                            "Sử dụng số điện thoại cá nhân đã đăng ký"
+                        },
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = HrpTextSecondary,
                             fontSize = 12.sp
@@ -171,6 +173,39 @@ fun LoginScreen(
                     )
 
                     Spacer(modifier = Modifier.height(18.dp))
+
+                    AnimatedVisibility(visible = isRegisterMode) {
+                        Column {
+                            OutlinedTextField(
+                                value = fullName,
+                                onValueChange = { fullName = it },
+                                label = { Text("Họ và tên đầy đủ") },
+                                placeholder = { Text("Nguyễn Văn A") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = HrpPrimary
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Text,
+                                    imeAction = ImeAction.Next
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = HrpPrimary,
+                                    unfocusedBorderColor = HrpSurfaceBorder,
+                                    focusedLabelColor = HrpPrimary
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("register_fullname_input")
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
+                    }
 
                     // Phone input
                     OutlinedTextField(
@@ -234,7 +269,11 @@ fun LoginScreen(
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 focusManager.clearFocus()
-                                onLogin(phone, password)
+                                if (isRegisterMode && onRegister != null) {
+                                    onRegister(phone, password, fullName)
+                                } else {
+                                    onLogin(phone, password)
+                                }
                             }
                         ),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -288,11 +327,15 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Login Button
+                    // Submit Button
                     Button(
                         onClick = {
                             focusManager.clearFocus()
-                            onLogin(phone, password)
+                            if (isRegisterMode && onRegister != null) {
+                                onRegister(phone, password, fullName)
+                            } else {
+                                onLogin(phone, password)
+                            }
                         },
                         enabled = !isAuthenticating,
                         shape = RoundedCornerShape(12.dp),
@@ -309,10 +352,10 @@ fun LoginScreen(
                                 strokeWidth = 2.5.dp
                             )
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text("Đang xác thực...", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Đang xử lý...", fontWeight = FontWeight.Bold, color = Color.White)
                         } else {
                             Text(
-                                "Đăng Nhập",
+                                if (isRegisterMode) "Đăng Ký Tài Khoản" else "Đăng Nhập",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
@@ -321,15 +364,40 @@ fun LoginScreen(
                             )
                         }
                     }
+
+                    if (onRegister != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (isRegisterMode) "Đã có tài khoản?" else "Chưa có tài khoản?",
+                                style = MaterialTheme.typography.bodySmall.copy(color = HrpTextSecondary)
+                            )
+                            TextButton(
+                                onClick = { isRegisterMode = !isRegisterMode },
+                                modifier = Modifier.testTag("toggle_register_mode_button")
+                            ) {
+                                Text(
+                                    text = if (isRegisterMode) "Đăng nhập ngay" else "Đăng ký mới",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = HrpPrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
             if (isDemo) {
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Quick Demo Accounts Section for Review & Testing
                 Text(
-                    text = "TÀI KHOẢN MẪU DÙNG THỬ (DEMO)",
+                    text = "TÀI KHOẢN MẪU NGƯỜI LAO ĐỘNG (DEMO)",
                     style = MaterialTheme.typography.labelSmall.copy(
                         color = HrpTextSecondary,
                         fontWeight = FontWeight.Bold,
@@ -339,55 +407,20 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    DemoAccountItem(
-                        roleName = "Người Lao Động / Công Nhân",
-                        phoneExample = "0987654321",
-                        icon = Icons.Default.Person,
-                        onClick = {
-                            phone = "0987654321"
-                            password = "123456"
-                        }
-                    )
-
-                    DemoAccountItem(
-                        roleName = "Nhân Sự / Quản Lý Ca (HR)",
-                        phoneExample = "0912345678",
-                        icon = Icons.Default.Groups,
-                        onClick = {
-                            phone = "0912345678"
-                            password = "123456"
-                        }
-                    )
-
-                    DemoAccountItem(
-                        roleName = "Ban Giám Đốc (BOD Control Tower)",
-                        phoneExample = "0900000001",
-                        icon = Icons.Default.Business,
-                        onClick = {
-                            phone = "0900000001"
-                            password = "123456"
-                        }
-                    )
-
-                    DemoAccountItem(
-                        roleName = "Cộng Tác Viên Tuyển Dụng (CTV)",
-                        phoneExample = "0933333339",
-                        icon = Icons.Default.Work,
-                        onClick = {
-                            phone = "0933333339"
-                            password = "123456"
-                        }
-                    )
-                }
+                DemoAccountItem(
+                    roleName = "Người Lao Động / Công Nhân",
+                    phoneExample = "0987654321",
+                    icon = Icons.Default.Person,
+                    onClick = {
+                        isRegisterMode = false
+                        phone = "0987654321"
+                        password = "123456"
+                    }
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Footer note
             Text(
                 text = "Tổng đài hỗ trợ người lao động KCN: 1900 6868",
                 style = MaterialTheme.typography.bodySmall.copy(

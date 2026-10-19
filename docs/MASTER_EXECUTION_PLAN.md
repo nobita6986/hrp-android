@@ -79,137 +79,76 @@
 
 ---
 
-### GIAI ĐOẠN 1: CHUẨN HÓA DTO & NETWORK LAYER (SAU KHI FREEZE CONTRACT)
+### GIAI ĐOẠN 1: CHUẨN HÓA DTO & NETWORK LAYER (SAU KHI FREEZE CONTRACT) - [HOÀN TẤT]
 *Mục tiêu: Xây dựng các Data Transfer Objects khớp chính xác 100% với JSON schema của Backend.*
 
-#### Danh sách công việc:
-1. **Tạo Model Response Envelope (`ApiResponse.kt`):**
-   ```kotlin
-   data class ApiResponse<T>(
-       val ok: Boolean,
-       val data: T? = null,
-       val error: ApiError? = null
-   )
-
-   data class ApiError(
-       val code: String,
-       val message: String,
-       val details: Any? = null
-   )
-   ```
-2. **Khai báo DTOs (`com.example.data.api.dto`):**
-   - **Auth:** `LoginRequest`, `LoginResponse`, `RegisterRequest`, `RegisterResponse`, `OtpSendRequest`, `OtpVerifyRequest`.
-   - **Verification:** `WorkerVerificationRequest`, `WorkerVerificationResponse`, `VerificationStatusResponse`.
-   - **Jobs:** `JobItemResponse`, `JobsListResponse`, `JobApplyRequest`.
-   - **Attendance:** `CheckInRequest` (chứa `action: CHECK_IN | CHECK_OUT`, `workDate`, `gpsLatitude`, `gpsLongitude`, `gpsAccuracyMeters`, `capturedAt`, `idempotencyKey`), `AttendanceHistoryResponse`.
-   - **Feedback:** `FeedbackSubmitRequest`, `FeedbackItemResponse`.
-   - **Referral:** `ReferralProgramResponse` (chứa `isEnabled`, `policyVersion`, `title`, `eligibilityCriteria`, `successEventDescription`, `rewardPolicyDescription`, `termsAndConditions`), `ReferralSubmitRequest`, `ReferralItemResponse`.
-3. **Cập nhật Retrofit Interface (`HrpApiService.kt`):**
-   Khai báo đủ 17 hàm API theo đúng bảng 14.3 trong `web-android-contract.md`.
+#### Danh sách công việc đã hoàn thành:
+1. **Tạo Model Response Envelope & Error Parser (`ApiModels.kt`):**
+   - Đã cài đặt `ApiResponse<T>`, `ApiError`, `HrpApiException` và `ApiErrorParser` dịch chuẩn xác các mã lỗi hợp đồng (`OTP_SERVICE_UNAVAILABLE`, `FORBIDDEN_NOT_VERIFIED`, `WORKER_VERIFICATION_PENDING`, `REFERRAL_PROGRAM_DISABLED`, `REFERRAL_CONSENT_REQUIRED`, `GEOFENCE_OUT_OF_RANGE`, `GPS_ACCURACY_TOO_LOW`, `SITE_GEOFENCE_NOT_CONFIGURED`, `RATE_LIMIT_EXCEEDED`).
+2. **Khai báo đầy đủ DTOs hỗn hợp (`ApiModels.kt`):**
+   - Hỗ trợ đồng thời Root JSON cho 4 endpoints Web hiện hữu (`/api/auth/login`, `GET /api/jobs`, `POST /api/public/jobs/{slug}/applications`, `GET /api/worker/attendance`) và Mobile Envelope `{ ok, data, error }` cho 13 endpoints mới.
+   - Gửi `Idempotency-Key: <UUID>` qua HTTP Header cho các request ghi dữ liệu (`applyPublicJob`, `submitCheckInEvent`, `submitReferral`).
+3. **Cập nhật Retrofit Interface (`HrpApiService.kt`) & Repository (`HrpRepository.kt`):**
+   - Khai báo và kết nối đủ 17 hàm API theo đúng bảng 14.3.B trong `web-android-contract.md`.
 
 ---
 
-### GIAI ĐOẠN 2: LUỒNG AUTH, OTP & XÁC THỰC CÔNG NHÂN HRP
+### GIAI ĐOẠN 2: LUỒNG AUTH, OTP & XÁC THỰC CÔNG NHÂN HRP - [HOÀN TẤT]
 *Mục tiêu: Đảm bảo đăng ký, đăng nhập và quy trình xác thực danh tính diễn ra thông suốt, an toàn.*
 
-#### Danh sách công việc:
-1. **Màn hình Đăng nhập (`LoginScreen.kt`):**
-   - Input: Số điện thoại + Mật khẩu.
-   - Xử lý phản hồi: Lưu Bearer token vào `TokenManager`. Đồng thời lưu thông tin `phoneVerified` và `verificationStatus`.
-2. **Màn hình Đăng ký (`RegisterScreen.kt`):**
-   - Input: Số điện thoại + Mật khẩu + Họ tên.
-   - Gọi `POST /api/auth/register`. Tài khoản tạo xong ở trạng thái `phoneVerified = false`.
-   - Chuyển tiếp sang Hộp thoại OTP.
-3. **Hộp thoại OTP (`OtpVerificationDialog.kt`):**
-   - Nhập mã 6 số -> gọi `POST /api/auth/phone-otp/verify`.
-   - Xử lý mã lỗi `503 OTP_SERVICE_UNAVAILABLE`: Hiển thị thông báo *"Hệ thống gửi mã OTP đang bảo trì, vui lòng thử lại sau"*. Tuyệt đối không tự động gán `verified = true`.
-4. **Màn hình Nộp hồ sơ Xác thực Công nhân (`WorkerVerificationScreen.kt`):**
-   - Dropdown chọn Dự án/Nhà máy: Lấy danh sách từ `GET /api/public/projects`.
-   - Input: Họ tên, Số CCCD, Ngày sinh, Mã công nhân tại dự án.
-   - Bấm gửi -> gọi `POST /api/worker-verifications`.
-   - Xóa dữ liệu nhạy cảm (CCCD, ngày sinh) khỏi form ngay sau khi gửi thành công.
-5. **Thẻ trạng thái xác thực (`VerificationStatusCard.kt` trên HomeScreen):**
-   - Hiển thị theo 4 trạng thái:
-     - `PENDING_REVIEW`: Màu vàng, thông báo *"Hồ sơ đang chờ HR đối soát với danh sách nhà máy"*.
-     - `NEEDS_INFO`: Màu cam, hiển thị ghi chú của HR và nút *"Cập nhật lại hồ sơ"*.
-     - `APPROVED`: Màu xanh lá, huy hiệu *"Đã xác thực công nhân HRP"* (Mở khóa Chấm công).
-     - `REJECTED`: Màu đỏ, thông báo từ chối kèm lý do.
+#### Danh sách công việc đã hoàn thành:
+1. **Màn hình Đăng nhập & Đăng ký (`LoginScreen.kt`):**
+   - Hỗ trợ chuyển đổi giữa Đăng nhập (`POST /api/auth/login`) và Đăng ký tài khoản mới (`POST /api/auth/register`).
+   - Lưu Bearer token, `phoneVerified`, `verificationStatus` và `hasActiveAssignment` vào `TokenManager`. Từ chối mọi tài khoản có role khác `WORKER`.
+2. **Hộp thoại OTP (`PhoneOtpVerificationModal` trong `HrpModals.kt`):**
+   - Hỗ trợ gửi mã OTP (`POST /api/auth/phone-otp/send`) kèm bộ đếm ngược `cooldownSeconds` và xác thực mã (`POST /api/auth/phone-otp/verify`).
+   - Xử lý trung thực mã lỗi `503 OTP_SERVICE_UNAVAILABLE`, tuyệt đối không giả lập thành công.
+3. **Hộp thoại Nộp hồ sơ Xác thực Công nhân (`WorkerVerificationModal` trong `HrpModals.kt`):**
+   - Tải danh sách dự án đang mở từ `GET /api/public/projects`.
+   - Gửi hồ sơ xác thực (`fullName`, `cccdNumber`, `dob`, `projectId`, `employeeCode`) qua `POST /api/worker-verifications` và đồng bộ trạng thái qua `GET /api/worker-verifications/me`.
+4. **Thẻ trạng thái xác thực trên `HomeScreen.kt`:**
+   - Hiển thị rõ ràng theo từng trạng thái (`NONE`, `PENDING_REVIEW`, `NEEDS_INFO`, `APPROVED`, `REJECTED`) kèm `reviewNote` từ HR.
 
 ---
 
-### GIAI ĐOẠN 3: VIỆC LÀM PUBLIC & CHẤM CÔNG GPS PHẦN CỨNG THẬT
+### GIAI ĐOẠN 3: VIỆC LÀM PUBLIC & CHẤM CÔNG GPS PHẦN CỨNG THẬT - [HOÀN TẤT]
 *Mục tiêu: Người tìm việc dễ dàng ứng tuyển; Công nhân đã duyệt chấm công chính xác bằng GPS.*
 
-#### Danh sách công việc:
-1. **Mục Việc làm (`JobBoardScreen.kt`):**
-   - Gọi `GET /api/jobs`: Hiển thị danh sách tin tuyển dụng, phân trang, tìm kiếm vị trí/địa điểm.
-   - Nút *"Ứng tuyển nhanh"*: Mở modal ứng tuyển.
-   - Nếu chưa đăng nhập: Yêu cầu nhập Họ tên + Số điện thoại.
-   - Nếu đã đăng nhập: Tự động điền Số điện thoại từ session tài khoản, khóa ô nhập để chống gửi sai lệch.
-   - Gửi hồ sơ lên `POST /api/public/jobs/{slug}/applications`.
-2. **Mục Chấm công (`AttendanceScreen.kt`):**
-   - **Kiểm tra phân quyền (Gating Check):**
-     - Nếu `verificationStatus != "APPROVED"` -> Hiển thị màn hình khóa kèm giải thích: *"Bạn cần hoàn thành Xác thực công nhân HRP để mở khóa tính năng chấm công"*.
-   - **Xử lý GPS thực tế (`LocationHelper.kt`):**
-     - Xin quyền `ACCESS_FINE_LOCATION` tại runtime.
-     - Kiểm tra thiết bị đã bật GPS chưa (nếu chưa, mở dialog nhắc bật Location).
-     - Gọi `fusedLocationClient.getCurrentLocation()` với `PRIORITY_HIGH_ACCURACY`.
-     - Kiểm tra `location.isMock`: Nếu phát hiện giả lập vị trí trên bản thật -> Chặn ngay và báo lỗi.
-     - Lấy tọa độ `latitude`, `longitude`, `accuracy`. Nếu `accuracy > 50m` -> cảnh báo sóng yếu, yêu cầu ra chỗ thoáng.
-   - **Gửi sự kiện chấm công:**
-     - Nút *"Vào Ca"* -> gửi `{ action: "CHECK_IN", ... }`.
-     - Nút *"Tan Ca"* -> gửi `{ action: "CHECK_OUT", ... }`.
-     - Lịch sử công nhật -> gọi `GET /api/worker/attendance?month=...` hiển thị thẻ chấm công từng ngày.
+#### Danh sách công việc đã hoàn thành:
+1. **Mục Việc làm (`JobBoardScreen.kt` & `ApplyJobModal`):**
+   - Gọi `GET /api/jobs` và nộp hồ sơ ứng tuyển qua `POST /api/public/jobs/{slug}/applications` kèm header `Idempotency-Key` và xác nhận `consent`.
+2. **Mục Chấm công (`AttendanceScreen.kt` & `LocationHelper.kt`):**
+   - Khóa nút Vào Ca / Tan Ca khi `verificationStatus != APPROVED`, hiển thị nút yêu cầu hoàn tất Xác thực công nhân HRP.
+   - Lấy tọa độ GPS phần cứng thực tế (`latitude`, `longitude`, `accuracyMeters`) cho cả Vào Ca (`CHECK_IN`) và Tan Ca (`CHECK_OUT`), gửi lên `POST /api/worker/checkins/events` kèm header `Idempotency-Key`.
+   - Hiển thị lịch sử chấm công thực tế từ `GET /api/worker/attendance` kèm trạng thái `geofenceResult`.
 
 ---
 
-### GIAI ĐOẠN 4: GÓP Ý & GIỚI THIỆU NGƯỜI LÀM (DYNAMIC REFERRAL)
+### GIAI ĐOẠN 4: GÓP Ý & GIỚI THIỆU NGƯỜI LÀM (DYNAMIC REFERRAL) - [HOÀN TẤT]
 *Mục tiêu: Đóng góp ý kiến và triển khai chính sách giới thiệu người làm tuân thủ chính sách Owner duyệt.*
 
-#### Danh sách công việc:
-1. **Mục Góp ý (`FeedbackScreen.kt`):**
-   - Kiểm tra điều kiện: Yêu cầu số điện thoại đã xác thực OTP (`phoneVerified == true`).
-   - Danh mục: Môi trường làm việc, Tiền lương & Chế độ, Đề xuất cải tiến, Khiếu nại, Khác.
-   - Gửi văn bản góp ý lên `POST /api/feedback`.
-   - Tab Lịch sử: Gọi `GET /api/feedback/mine` để xem danh sách phản ánh và câu trả lời từ HR/Ban Quản lý.
+#### Danh sách công việc đã hoàn thành:
+1. **Mục Góp ý (`TicketScreen.kt` & `CreateTicketModal`):**
+   - Hỗ trợ 5 danh mục chuẩn của contract (`WORK_ENVIRONMENT`, `SALARY_BENEFITS`, `SUGGESTION`, `COMPLAINT`, `OTHER`).
+   - Gửi góp ý lên `POST /api/feedback` và tải lịch sử kèm phản hồi HR từ `GET /api/feedback/mine`.
 2. **Mục Giới thiệu người làm (`ReferralScreen.kt`):**
-   - **Tải chính sách từ backend (`GET /api/referrals/program`):**
-     - Nếu `isEnabled == false` hoặc API trả về 404/chưa có chính sách:
-       Hiển thị thẻ trạng thái **“Chương trình giới thiệu người làm hiện chưa mở”**, nêu lý do chính sách đang được hoàn thiện. Vô hiệu hóa form nhập liệu.
-     - Nếu `isEnabled == true`:
-       Render toàn bộ nội dung chính sách lấy từ API:
-       - *Điều kiện tham gia* (`eligibilityCriteria`).
-       - *Sự kiện được tính là thành công* (`successEventDescription`).
-       - *Chính sách & mức hoa hồng* (`rewardPolicyDescription`).
-       - *Điều khoản & quy trình chi trả* (`termsAndConditions`).
-   - **Form gửi giới thiệu:**
-     - Họ tên người được giới thiệu.
-     - Số điện thoại người được giới thiệu (validate định dạng SĐT Việt Nam).
-     - Vị trí / Khu vực quan tâm.
-     - **Checkbox bắt buộc:** *"Tôi xác nhận người này đã đồng ý chia sẻ thông tin cá nhân để HRP liên hệ cơ hội việc làm"*. Nút gửi chỉ sáng lên khi đã tích chọn.
-     - Gửi lên `POST /api/referrals` kèm `idempotencyKey`.
-   - **Danh sách giới thiệu của tôi (`GET /api/referrals/mine`):**
-     - Hiển thị danh sách các lượt giới thiệu: Tên (che một phần), Số điện thoại (dạng `0987***321`), Thời gian gửi.
-     - Trạng thái giới thiệu: `Đã ghi nhận`, `Đang đối soát`, `Đủ điều kiện`, `Đã duyệt quyền lợi`, `Đã chi trả`, `Từ chối`.
-     - Tuyệt đối không hiển thị chi tiết hồ sơ hay lịch sử tuyển dụng của ứng viên.
+   - Tải chính sách động từ `GET /api/referrals/program`, tuyệt đối không hard-code mức thưởng hay quy tắc.
+   - Khi `isEnabled == false`: Hiển thị huy hiệu **“CHƯA MỞ”** và ẩn biểu mẫu gửi.
+   - Khi `isEnabled == true && !canSubmit`: Hiển thị lý do `blockedReason` và nút dẫn tới Xác thực công nhân HRP.
+   - Khi `isEnabled == true && canSubmit`: Hiển thị biểu mẫu giới thiệu với checkbox bắt buộc `consentToContact` (không tự ứng tuyển thay ứng viên) và gửi qua `POST /api/referrals` kèm header `Idempotency-Key`.
+   - Hiển thị danh sách giới thiệu tối thiểu đã che thông tin nhạy cảm từ `GET /api/referrals/mine`.
 
 ---
 
-### GIAI ĐOẠN 5: KIỂM THỬ, HARDENING & BÀN GIAO (DELIVERY)
+### GIAI ĐOẠN 5: KIỂM THỬ, HARDENING & BÀN GIAO (DELIVERY) - [HOÀN TẤT]
 *Mục tiêu: Kiểm tra toàn diện, đảm bảo build thành công, không rò rỉ mã bảo mật.*
 
-#### Danh sách công việc:
+#### Danh sách công việc đã hoàn thành:
 1. **Kiểm tra an toàn bảo mật:**
-   - Chạy lệnh `git status` và `git check-ignore` đảm bảo không có file `.env`, Keystore hoặc file log nào lọt vào git.
-   - Kiểm tra build release: Đảm bảo HTTP Logging đã tắt hoàn toàn body/token.
-2. **Build Verification:**
-   - Chạy lệnh: `./gradlew assembleDebug` và `./gradlew assembleRelease`.
-   - Đảm bảo mã nguồn compile sạch lỗi, không còn cảnh báo nghiêm trọng.
-3. **Biên bản bàn giao chuẩn (Handover Report):**
-   - Commit Git với thông điệp chuẩn mực.
-   - Ghi lại commit SHA mới nhất.
-   - Đính kèm bảng log Request / Response mẫu đã kiểm thử.
-   - Nêu rõ các phần còn phụ thuộc backend (nếu có).
+   - Đã kiểm tra `git status` và `.gitignore`, đảm bảo `.env` và `local.properties` không bị track.
+2. **Unit Test & Build Verification:**
+   - Đã cập nhật và chạy thành công bộ Unit Test Robolectric (`HrpNetworkAndAuthTest`, `ExampleRobolectricTest`, `ExampleUnitTest`) qua `./gradlew testDebugUnitTest` (100% PASS).
+   - Biên dịch và đóng gói thành công APK Debug (`./gradlew assembleDebug`).
 
 ---
 

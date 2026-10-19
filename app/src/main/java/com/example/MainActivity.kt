@@ -24,8 +24,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
@@ -36,6 +38,8 @@ import com.example.ui.components.CheckInSuccessModal
 import com.example.ui.components.CreateTicketModal
 import com.example.ui.components.HrpBottomBar
 import com.example.ui.components.HrpTopBar
+import com.example.ui.components.PhoneOtpVerificationModal
+import com.example.ui.components.WorkerVerificationModal
 import com.example.ui.screens.AttendanceScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.JobBoardScreen
@@ -100,6 +104,9 @@ fun MainAppHost(
                 errorMessage = loginErrorMessage,
                 onLogin = { phone, password ->
                     viewModel.login(phone, password)
+                },
+                onRegister = { phone, password, fullName ->
+                    viewModel.register(phone, password, fullName)
                 }
             )
         }
@@ -114,8 +121,12 @@ fun HrpApp(
     val coroutineScope = rememberCoroutineScope()
 
     val workerProfile by viewModel.workerProfile.collectAsState()
+    val verificationInfo by viewModel.verificationInfo.collectAsState()
+    val publicProjects by viewModel.publicProjects.collectAsState()
     val attendanceList by viewModel.attendanceList.collectAsState()
     val tickets by viewModel.tickets.collectAsState()
+    val referralProgram by viewModel.referralProgram.collectAsState()
+    val referralList by viewModel.referralList.collectAsState()
     val jobListings by viewModel.jobListings.collectAsState()
     val currentTab by viewModel.currentTab.collectAsState()
     val toastMessage by viewModel.toastMessage.collectAsState()
@@ -126,7 +137,18 @@ fun HrpApp(
     val showCheckInSuccessDialog by viewModel.showCheckInSuccessDialog.collectAsState()
     val showApplyJobDialog by viewModel.showApplyJobDialog.collectAsState()
 
+    val showPhoneOtpDialog by viewModel.showPhoneOtpDialog.collectAsState()
+    val otpCooldownSeconds by viewModel.otpCooldownSeconds.collectAsState()
+    val otpErrorMessage by viewModel.otpErrorMessage.collectAsState()
+    val isSendingOtp by viewModel.isSendingOtp.collectAsState()
+    val isVerifyingOtp by viewModel.isVerifyingOtp.collectAsState()
+
+    val showWorkerVerificationDialog by viewModel.showWorkerVerificationDialog.collectAsState()
+    val isSubmittingVerification by viewModel.isSubmittingVerification.collectAsState()
+    val isSubmittingReferral by viewModel.isSubmittingReferral.collectAsState()
+
     val snackbarHostState = remember { SnackbarHostState() }
+    var pendingGpsAction by remember { mutableStateOf("CHECK_IN") }
 
     LaunchedEffect(toastMessage) {
         toastMessage?.let {
@@ -135,7 +157,7 @@ fun HrpApp(
         }
     }
 
-    // GPS Hardware runtime permission launcher for Check-In
+    // GPS Hardware runtime permission launcher for Check-In & Check-Out
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -143,20 +165,42 @@ fun HrpApp(
         val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
 
         coroutineScope.launch {
-            if (fineGranted || coarseGranted) {
-                val loc = viewModel.locationHelper.getCurrentLocation()
-                viewModel.checkIn(loc)
+            val loc = if (fineGranted || coarseGranted) {
+                viewModel.locationHelper.getCurrentLocation()
             } else {
-                viewModel.checkIn(null)
+                null
+            }
+            if (pendingGpsAction == "CHECK_OUT") {
+                viewModel.checkOut(loc)
+            } else {
+                viewModel.checkIn(loc)
             }
         }
     }
 
     val performGpsCheckIn = {
+        pendingGpsAction = "CHECK_IN"
         if (LocationHelper.hasLocationPermission(context)) {
             coroutineScope.launch {
                 val loc = viewModel.locationHelper.getCurrentLocation()
                 viewModel.checkIn(loc)
+            }
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
+    val performGpsCheckOut = {
+        pendingGpsAction = "CHECK_OUT"
+        if (LocationHelper.hasLocationPermission(context)) {
+            coroutineScope.launch {
+                val loc = viewModel.locationHelper.getCurrentLocation()
+                viewModel.checkOut(loc)
             }
         } else {
             locationPermissionLauncher.launch(
@@ -205,13 +249,16 @@ fun HrpApp(
                     NavigationTab.HOME -> {
                         HomeScreen(
                             workerProfile = workerProfile,
+                            verificationInfo = verificationInfo,
                             attendanceList = attendanceList,
                             tickets = tickets,
                             onNavigateTab = { viewModel.selectTab(it) },
                             onCheckIn = { performGpsCheckIn() },
-                            onCheckOut = { viewModel.checkOut() },
+                            onCheckOut = { performGpsCheckOut() },
                             onRequestAdvanceSalary = { viewModel.setAdvanceSalaryDialogVisible(true) },
-                            onCreateTicket = { viewModel.setCreateTicketDialogVisible(true) }
+                            onCreateTicket = { viewModel.setCreateTicketDialogVisible(true) },
+                            onOpenPhoneOtp = { viewModel.setPhoneOtpDialogVisible(true) },
+                            onOpenWorkerVerification = { viewModel.setWorkerVerificationDialogVisible(true) }
                         )
                     }
 
@@ -225,9 +272,11 @@ fun HrpApp(
                     NavigationTab.ATTENDANCE -> {
                         AttendanceScreen(
                             attendanceList = attendanceList,
+                            workerProfile = workerProfile,
                             onCheckIn = { performGpsCheckIn() },
-                            onCheckOut = { viewModel.checkOut() },
-                            onDisputeAttendance = { viewModel.setCreateTicketDialogVisible(true) }
+                            onCheckOut = { performGpsCheckOut() },
+                            onDisputeAttendance = { viewModel.setCreateTicketDialogVisible(true) },
+                            onOpenWorkerVerification = { viewModel.setWorkerVerificationDialogVisible(true) }
                         )
                     }
 
@@ -239,7 +288,16 @@ fun HrpApp(
                     }
 
                     NavigationTab.REFERRAL -> {
-                        ReferralScreen()
+                        ReferralScreen(
+                            program = referralProgram,
+                            referralList = referralList,
+                            workerProfile = workerProfile,
+                            isSubmitting = isSubmittingReferral,
+                            onSubmitReferral = { name, phone, jobInterest, consent ->
+                                viewModel.submitReferral(name, phone, jobInterest, consent)
+                            },
+                            onOpenWorkerVerification = { viewModel.setWorkerVerificationDialogVisible(true) }
+                        )
                     }
                 }
             }
@@ -253,6 +311,9 @@ fun HrpApp(
             onSubmit = { type, title, desc, amount, dates ->
                 viewModel.submitTicket(type, title, desc, amount, dates)
             },
+            onSubmitFeedback = { category, content ->
+                viewModel.submitFeedback(category, content)
+            },
             onDismiss = { viewModel.setCreateTicketDialogVisible(false) }
         )
     }
@@ -262,6 +323,9 @@ fun HrpApp(
             initialType = TicketType.ADVANCE_SALARY,
             onSubmit = { type, title, desc, amount, dates ->
                 viewModel.submitTicket(type, title, desc, amount, dates)
+            },
+            onSubmitFeedback = { category, content ->
+                viewModel.submitFeedback(category, content)
             },
             onDismiss = { viewModel.setAdvanceSalaryDialogVisible(false) }
         )
@@ -274,11 +338,40 @@ fun HrpApp(
         )
     }
 
+    if (showPhoneOtpDialog) {
+        PhoneOtpVerificationModal(
+            phone = workerProfile.phone,
+            cooldownSeconds = otpCooldownSeconds,
+            isSendingOtp = isSendingOtp,
+            isVerifyingOtp = isVerifyingOtp,
+            errorMessage = otpErrorMessage,
+            onSendOtp = { phone -> viewModel.sendPhoneOtp(phone) },
+            onVerifyOtp = { code -> viewModel.verifyPhoneOtp(code) },
+            onDismiss = { viewModel.setPhoneOtpDialogVisible(false) }
+        )
+    }
+
+    if (showWorkerVerificationDialog) {
+        WorkerVerificationModal(
+            defaultFullName = workerProfile.fullName.takeIf { it != "Người Lao Động" } ?: "",
+            defaultEmployeeCode = workerProfile.employeeCode,
+            publicProjects = publicProjects,
+            existingVerification = verificationInfo,
+            isSubmitting = isSubmittingVerification,
+            onSubmit = { fullName, cccdNumber, dob, projectId, employeeCode ->
+                viewModel.submitWorkerVerification(fullName, cccdNumber, dob, projectId, employeeCode)
+            },
+            onDismiss = { viewModel.setWorkerVerificationDialogVisible(false) }
+        )
+    }
+
     showApplyJobDialog?.let { job ->
         ApplyJobModal(
             job = job,
+            defaultName = workerProfile.fullName.takeIf { it != "Người Lao Động" } ?: "",
+            defaultPhone = workerProfile.phone,
             onSubmit = { name, phone ->
-                viewModel.submitApplication(job.title, name, phone)
+                viewModel.submitApplication(job.slug, name, phone)
             },
             onDismiss = { viewModel.openApplyJob(null) }
         )
