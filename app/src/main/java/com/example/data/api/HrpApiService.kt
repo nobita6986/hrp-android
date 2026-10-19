@@ -38,7 +38,7 @@ import retrofit2.http.Query
 
 /**
  * Retrofit API Service for HR Partner (HRP) Backend
- * Strictly aligned with the 17 endpoints in web-android-contract.md (SHA: 9CB3FC00EBA235A5120C81247EC4F6830D8E0C7F16DDFC3A046C9EA4B8342CF0)
+ * Strictly aligned with the 17 endpoints in web-android-contract.md (SHA: 28C70D9B01B20BB1051FECFDD206D1D3255B66062FF4EC2C76FF13A4F906DF81)
  */
 interface HrpApiService {
 

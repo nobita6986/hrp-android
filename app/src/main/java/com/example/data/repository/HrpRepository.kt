@@ -54,6 +54,15 @@ import java.util.UUID
 object HrpFormatters {
     private val vnLocale = Locale("vi", "VN")
     private val currencyFormat = NumberFormat.getCurrencyInstance(vnLocale)
+    private val STRICT_VN_PHONE_REGEX = Regex("^0\\d{9}$")
+
+    /**
+     * Strictly validates that phone is 10 digits starting with '0'.
+     * Rejects '+84', whitespace, and any separators ('.', '-', etc.) without auto-converting.
+     */
+    fun isValidStrictVnPhone(phone: String): Boolean {
+        return STRICT_VN_PHONE_REGEX.matches(phone)
+    }
 
     fun formatVnd(amount: Long): String {
         return currencyFormat.format(amount).replace("₫", "đ")
@@ -233,12 +242,17 @@ class HrpRepository(
     /**
      * Endpoint 1: POST /api/auth/register
      * Sends X-HRP-Client: android and reads data.token to persist Bearer session directly.
-     * Newly registered accounts always start with phoneVerified = false and no Worker/Assignment record.
+     * Strictly requires phone to be 10 digits starting with '0'; rejects +84, spaces, and separators.
      */
     suspend fun register(phone: String, password: String, fullName: String): Result<RegisterData> = withContext(Dispatchers.IO) {
+        if (!HrpFormatters.isValidStrictVnPhone(phone)) {
+            return@withContext Result.failure(
+                Exception("Số điện thoại phải gồm đúng 10 chữ số, bắt đầu bằng 0 (không dùng +84, khoảng trắng hoặc dấu phân cách)")
+            )
+        }
         try {
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
-            val response = api.register(RegisterRequest(phone = phone, password = password, fullName = fullName))
+            val response = api.register(RegisterRequest(phone = phone, password = password, fullName = fullName.trim()))
             val data = response.data
             if (response.isSuccessful && data != null) {
                 val roleStr = data.role.ifBlank { "WORKER" }
@@ -250,7 +264,7 @@ class HrpRepository(
                 }
 
                 val resolvedName = data.fullName.takeIf { it.isNotBlank() } ?: fullName.trim()
-                val resolvedPhone = data.phone.takeIf { it.isNotBlank() } ?: phone.trim()
+                val resolvedPhone = data.phone.takeIf { it.isNotBlank() } ?: phone
                 // Strictly respect backend phoneVerified (false on new registration; never auto-verify)
                 val isPhoneVerified = data.phoneVerified
                 val sessionToken = data.token?.takeIf { it.isNotBlank() } ?: tokenManager?.getToken()

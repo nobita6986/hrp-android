@@ -158,19 +158,13 @@ class HrpViewModel(
     fun register(phone: String, pass: String, fullName: String) {
         if (_isAuthenticating.value) return
         val trimmedName = fullName.trim()
-        val rawPhone = phone.trim().replace(" ", "").replace(".", "").replace("-", "")
-        val normalizedPhone = when {
-            rawPhone.startsWith("+84") -> "0${rawPhone.removePrefix("+84")}"
-            rawPhone.startsWith("84") && rawPhone.length == 11 -> "0${rawPhone.removePrefix("84")}"
-            else -> rawPhone
-        }
 
-        if (trimmedName.isBlank() || normalizedPhone.isBlank() || pass.isBlank()) {
+        if (trimmedName.isBlank() || phone.isBlank() || pass.isBlank()) {
             _loginErrorMessage.value = "Vui lòng nhập đầy đủ Họ tên, Số điện thoại và Mật khẩu"
             return
         }
-        if (!Regex("^0\\d{9}$").matches(normalizedPhone)) {
-            _loginErrorMessage.value = "Số điện thoại không hợp lệ (cần 10 chữ số bắt đầu bằng số 0)"
+        if (!com.example.data.repository.HrpFormatters.isValidStrictVnPhone(phone)) {
+            _loginErrorMessage.value = "Số điện thoại phải gồm đúng 10 chữ số, bắt đầu bằng 0 (không dùng +84, khoảng trắng hoặc dấu phân cách)"
             return
         }
         if (pass.length < 8) {
@@ -182,7 +176,7 @@ class HrpViewModel(
             _isAuthenticating.value = true
             _loginErrorMessage.value = null
 
-            val registerResult = repository.register(normalizedPhone, pass, trimmedName)
+            val registerResult = repository.register(phone, pass, trimmedName)
             registerResult.onSuccess { data ->
                 if (!data.token.isNullOrBlank() || tokenManager.isLoggedIn()) {
                     _isAuthenticating.value = false
@@ -190,7 +184,7 @@ class HrpViewModel(
                     _isLoggedIn.value = true
                     _toastMessage.value = "Đăng ký tài khoản thành công! Số điện thoại chưa xác minh OTP (phoneVerified=false)."
                 } else {
-                    val loginResult = repository.login(normalizedPhone, pass)
+                    val loginResult = repository.login(phone, pass)
                     _isAuthenticating.value = false
                     loginResult.onSuccess {
                         _currentTab.value = NavigationTab.HOME

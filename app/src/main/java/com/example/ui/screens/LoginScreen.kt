@@ -212,12 +212,26 @@ fun LoginScreen(
                         }
                     }
 
-                    // Phone input
+                    // Phone input (strictly 10 digits starting with 0 in register mode; rejects +84, spaces, separators)
+                    val isRegisterPhoneInvalid = isRegisterMode &&
+                        phone.isNotEmpty() &&
+                        !com.example.data.repository.HrpFormatters.isValidStrictVnPhone(phone)
+
                     OutlinedTextField(
                         value = phone,
                         onValueChange = { phone = it },
-                        label = { Text("Số điện thoại") },
-                        placeholder = { Text("0987xxxxxx") },
+                        label = { Text(if (isRegisterMode) "Số điện thoại (10 chữ số, bắt đầu bằng 0)" else "Số điện thoại") },
+                        placeholder = { Text("0912345678") },
+                        isError = isRegisterPhoneInvalid,
+                        supportingText = if (isRegisterPhoneInvalid) {
+                            {
+                                Text(
+                                    text = "SĐT phải đúng 10 chữ số, bắt đầu bằng 0 (không dùng +84, khoảng trắng hoặc dấu phân cách)",
+                                    color = HrpError,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        } else null,
                         leadingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Phone,
@@ -227,7 +241,7 @@ fun LoginScreen(
                         },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Phone,
+                            keyboardType = KeyboardType.Number,
                             imeAction = ImeAction.Next
                         ),
                         colors = OutlinedTextFieldDefaults.colors(

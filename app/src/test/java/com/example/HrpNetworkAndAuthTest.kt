@@ -370,5 +370,40 @@ class HrpNetworkAndAuthTest {
         assertEquals("PROFILE_INCOMPLETE", profileIncErr.code)
         assertTrue(profileIncErr.message.contains("họ tên"))
     }
+
+    @Test
+    fun `test strict VN phone validation accepts only 10 digits starting with 0 and rejects +84 spaces and separators`() {
+        assertTrue(HrpFormatters.isValidStrictVnPhone("0912345678"))
+        assertTrue(HrpFormatters.isValidStrictVnPhone("0387654321"))
+
+        // Rejects +84 or 84 prefix (must NOT auto-convert)
+        assertFalse(HrpFormatters.isValidStrictVnPhone("+84912345678"))
+        assertFalse(HrpFormatters.isValidStrictVnPhone("84912345678"))
+
+        // Rejects whitespace and separators
+        assertFalse(HrpFormatters.isValidStrictVnPhone("0912 345 678"))
+        assertFalse(HrpFormatters.isValidStrictVnPhone(" 0912345678"))
+        assertFalse(HrpFormatters.isValidStrictVnPhone("0912345678 "))
+        assertFalse(HrpFormatters.isValidStrictVnPhone("0912.345.678"))
+        assertFalse(HrpFormatters.isValidStrictVnPhone("0912-345-678"))
+
+        // Rejects wrong length or non-0 leading digit
+        assertFalse(HrpFormatters.isValidStrictVnPhone("091234567"))
+        assertFalse(HrpFormatters.isValidStrictVnPhone("09123456789"))
+        assertFalse(HrpFormatters.isValidStrictVnPhone("1912345678"))
+
+        // Verify HrpRepository.register rejects +84 and separators before hitting network
+        val repo = com.example.data.repository.HrpRepository()
+        val plus84Result = kotlinx.coroutines.runBlocking {
+            repo.register("+84912345678", "password123", "Nguyễn Văn A")
+        }
+        assertTrue(plus84Result.isFailure)
+
+        val spaceResult = kotlinx.coroutines.runBlocking {
+            repo.register("0912 345 678", "password123", "Nguyễn Văn A")
+        }
+        assertTrue(spaceResult.isFailure)
+    }
 }
+
 
