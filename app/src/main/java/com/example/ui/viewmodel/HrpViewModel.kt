@@ -188,13 +188,21 @@ class HrpViewModel(
                     _isAuthenticating.value = false
                     _currentTab.value = NavigationTab.HOME
                     _isLoggedIn.value = true
-                    _toastMessage.value = "Đăng ký tài khoản thành công! Số điện thoại chưa xác minh OTP (phoneVerified=false)."
+                    if (!data.phoneVerified) {
+                        _otpErrorMessage.value = null
+                        _showPhoneOtpDialog.value = true
+                    }
+                    _toastMessage.value = "Đăng ký tài khoản thành công! Vui lòng xác minh OTP cho số điện thoại ${data.phone.ifBlank { phone }}."
                 } else {
                     val loginResult = repository.login(phone, pass)
                     _isAuthenticating.value = false
                     loginResult.onSuccess {
                         _currentTab.value = NavigationTab.HOME
                         _isLoggedIn.value = true
+                        if (!workerProfile.value.phoneVerified) {
+                            _otpErrorMessage.value = null
+                            _showPhoneOtpDialog.value = true
+                        }
                         _toastMessage.value = "Đăng ký tài khoản thành công!"
                     }.onFailure {
                         _toastMessage.value = "Đăng ký thành công! Vui lòng đăng nhập."
@@ -209,6 +217,10 @@ class HrpViewModel(
 
     fun logout() {
         viewModelScope.launch {
+            otpTimerJob?.cancel()
+            _otpCooldownSeconds.value = 0
+            _showPhoneOtpDialog.value = false
+            _otpErrorMessage.value = null
             repository.logout()
             _isLoggedIn.value = false
             _currentTab.value = NavigationTab.HOME
@@ -229,10 +241,30 @@ class HrpViewModel(
         }
     }
 
+    private fun formatOtpUiError(err: Throwable, fallback: String): String {
+        val baseMsg = err.message?.takeIf { it.isNotBlank() } ?: fallback
+        val apiErr = err as? com.example.data.api.model.HrpApiException
+        val code = apiErr?.code?.takeIf { it.isNotBlank() && it != "NETWORK_ERROR" }
+        return if (code != null && !baseMsg.contains(code, ignoreCase = true)) {
+            "$baseMsg ($code)"
+        } else {
+            baseMsg
+        }
+    }
+
     fun sendPhoneOtp(phone: String = workerProfile.value.phone) {
-        val targetPhone = phone.trim().ifBlank { tokenManager.getPhone().orEmpty() }
+        val accountPhone = workerProfile.value.phone.trim().ifBlank { tokenManager.getPhone()?.trim().orEmpty() }
+        val targetPhone = phone.trim().ifBlank { accountPhone }
         if (targetPhone.isBlank()) {
-            _otpErrorMessage.value = "Không tìm thấy số điện thoại để gửi mã OTP."
+            _otpErrorMessage.value = "Không tìm thấy số điện thoại trong tài khoản để gửi mã OTP."
+            return
+        }
+        if (accountPhone.isNotBlank() && targetPhone != accountPhone) {
+            _otpErrorMessage.value = "Số điện thoại gửi OTP phải khớp với số điện thoại trong tài khoản ($accountPhone)."
+            return
+        }
+        if (!com.example.data.repository.HrpFormatters.isValidStrictVnPhone(targetPhone)) {
+            _otpErrorMessage.value = "Số điện thoại phải gồm đúng 10 chữ số, bắt đầu bằng 0."
             return
         }
 
@@ -244,19 +276,19 @@ class HrpViewModel(
             _isSendingOtp.value = false
 
             result.onSuccess { data ->
-                startOtpCooldown(data.cooldownSeconds.coerceAtLeast(30))
-                _toastMessage.value = "Đã gửi mã OTP tới số điện thoại $targetPhone"
+                startOtpCooldown(data.cooldownSeconds.coerceAtLeast(1))
+                _toastMessage.value = "Đã gửi mã OTP 6 chữ số tới số điện thoại $targetPhone"
             }.onFailure { err ->
-                // Strictly surface real backend errors (e.g., 503 OTP_SERVICE_UNAVAILABLE)
-                _otpErrorMessage.value = err.message ?: "Không thể gửi mã OTP lúc này."
+                // Strictly surface real backend errors (e.g., 503 OTP_SERVICE_UNAVAILABLE, 429 RATE_LIMIT_EXCEEDED)
+                _otpErrorMessage.value = formatOtpUiError(err, "Không thể gửi mã OTP lúc này.")
             }
         }
     }
 
     fun verifyPhoneOtp(code: String) {
         val trimmedCode = code.trim()
-        if (trimmedCode.length < 4) {
-            _otpErrorMessage.value = "Vui lòng nhập đầy đủ mã OTP"
+        if (!com.example.data.repository.HrpFormatters.isValidOtpCode(trimmedCode)) {
+            _otpErrorMessage.value = "Vui lòng nhập đúng mã OTP gồm 6 chữ số"
             return
         }
 
@@ -272,7 +304,7 @@ class HrpViewModel(
                 _toastMessage.value = "Xác thực số điện thoại thành công!"
                 repository.fetchProfile()
             }.onFailure { err ->
-                _otpErrorMessage.value = err.message ?: "Mã OTP không chính xác hoặc đã hết hạn."
+                _otpErrorMessage.value = formatOtpUiError(err, "Mã OTP không chính xác hoặc đã hết hạn.")
             }
         }
     }

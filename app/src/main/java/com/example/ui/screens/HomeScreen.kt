@@ -107,7 +107,8 @@ fun HomeScreen(
             WorkerHeroCard(
                 profile = workerProfile,
                 onCheckIn = onCheckIn,
-                onCheckOut = onCheckOut
+                onCheckOut = onCheckOut,
+                onOpenPhoneOtp = onOpenPhoneOtp
             )
         }
 
@@ -116,7 +117,8 @@ fun HomeScreen(
             item {
                 MobileAccessStatusCard(
                     profile = workerProfile,
-                    isSiteGpsLocked = isSiteGpsLocked
+                    isSiteGpsLocked = isSiteGpsLocked,
+                    onOpenPhoneOtp = onOpenPhoneOtp
                 )
             }
         }
@@ -168,7 +170,8 @@ fun HomeScreen(
 @Composable
 private fun MobileAccessStatusCard(
     profile: WorkerProfile,
-    isSiteGpsLocked: Boolean
+    isSiteGpsLocked: Boolean,
+    onOpenPhoneOtp: () -> Unit = {}
 ) {
     val accentColor = if (isSiteGpsLocked) HrpError else HrpWarning
     val titleText = if (isSiteGpsLocked) {
@@ -226,6 +229,23 @@ private fun MobileAccessStatusCard(
                     )
                 }
             }
+            if (!profile.phoneVerified) {
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = onOpenPhoneOtp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("home_open_phone_otp_button"),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "Xác minh số điện thoại qua OTP",
+                        fontWeight = FontWeight.Bold,
+                        color = HrpPrimary,
+                        fontSize = 12.sp
+                    )
+                }
+            }
         }
     }
 }
@@ -234,7 +254,8 @@ private fun MobileAccessStatusCard(
 private fun WorkerHeroCard(
     profile: WorkerProfile,
     onCheckIn: () -> Unit,
-    onCheckOut: () -> Unit
+    onCheckOut: () -> Unit,
+    onOpenPhoneOtp: () -> Unit = {}
 ) {
     val canCheckIn = profile.canCheckIn
     val isSiteGpsReady = profile.hasConfiguredSiteGps && !profile.siteGeofenceNotConfigured
@@ -336,6 +357,13 @@ private fun WorkerHeroCard(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(HrpNavySurface)
+                    .then(
+                        if (!profile.phoneVerified) {
+                            Modifier.clickable { onOpenPhoneOtp() }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .padding(horizontal = 12.dp, vertical = 7.dp)
                     .testTag("home_phone_verification_badge"),
                 verticalAlignment = Alignment.CenterVertically
@@ -353,8 +381,24 @@ private fun WorkerHeroCard(
                         color = otpStatusColor,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 11.sp
-                    )
+                    ),
+                    modifier = Modifier.weight(1f)
                 )
+                if (!profile.phoneVerified) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Xác minh OTP",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp
+                        ),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(HrpPrimary)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))

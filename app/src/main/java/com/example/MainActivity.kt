@@ -290,7 +290,8 @@ fun HrpApp(
                         TicketScreen(
                             tickets = tickets,
                             phoneVerified = workerProfile.phoneVerified,
-                            onCreateTicketClick = { viewModel.setCreateTicketDialogVisible(true) }
+                            onCreateTicketClick = { viewModel.setCreateTicketDialogVisible(true) },
+                            onOpenPhoneOtp = { viewModel.setPhoneOtpDialogVisible(true) }
                         )
                     }
 
@@ -322,6 +323,7 @@ fun HrpApp(
             onSubmitFeedback = { category, content ->
                 viewModel.submitFeedback(category, content)
             },
+            onOpenPhoneOtp = { viewModel.setPhoneOtpDialogVisible(true) },
             onDismiss = { viewModel.setCreateTicketDialogVisible(false) }
         )
     }
@@ -336,6 +338,7 @@ fun HrpApp(
             onSubmitFeedback = { category, content ->
                 viewModel.submitFeedback(category, content)
             },
+            onOpenPhoneOtp = { viewModel.setPhoneOtpDialogVisible(true) },
             onDismiss = { viewModel.setAdvanceSalaryDialogVisible(false) }
         )
     }

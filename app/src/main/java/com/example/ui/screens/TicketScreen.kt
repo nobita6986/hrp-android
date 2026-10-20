@@ -30,6 +30,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -64,6 +65,7 @@ fun TicketScreen(
     tickets: List<TicketItem>,
     phoneVerified: Boolean = true,
     onCreateTicketClick: () -> Unit,
+    onOpenPhoneOtp: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedTypeFilter by remember { mutableStateOf<TicketType?>(null) }
@@ -120,6 +122,21 @@ fun TicketScreen(
                                     lineHeight = 16.sp
                                 )
                             )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            OutlinedButton(
+                                onClick = onOpenPhoneOtp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("feedback_open_phone_otp_button"),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text(
+                                    text = "Xác minh số điện thoại qua OTP",
+                                    fontWeight = FontWeight.Bold,
+                                    color = HrpPrimary,
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
                     }
                 }

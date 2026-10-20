@@ -152,8 +152,10 @@ object ApiErrorParser {
                 serverMessage ?: "Tài khoản chưa được Quản trị viên liên kết với hồ sơ Người lao động."
             "PHONE_NOT_VERIFIED" ->
                 serverMessage ?: "Cần xác thực số điện thoại bằng mã OTP trước khi sử dụng tính năng Góp ý."
-            "OTP_SERVICE_UNAVAILABLE" -> "Hệ thống gửi mã OTP đang bảo trì, vui lòng thử lại sau."
-            "OTP_INVALID_OR_EXPIRED" -> serverMessage ?: "Mã OTP không chính xác hoặc đã hết hạn."
+            "OTP_SERVICE_UNAVAILABLE" ->
+                serverMessage ?: "Hệ thống gửi mã OTP đang bảo trì, vui lòng thử lại sau."
+            "OTP_INVALID_OR_EXPIRED" ->
+                serverMessage ?: "Mã OTP không chính xác hoặc đã hết hạn."
             "WORKER_VERIFICATION_PENDING" -> serverMessage ?: "Bạn đang có một hồ sơ xác thực chờ HR xét duyệt, không thể gửi trùng."
             "REFERRAL_PROGRAM_DISABLED" -> serverMessage ?: "Chương trình giới thiệu người làm hiện chưa mở hoặc đã hết hiệu lực."
             "REFERRAL_CONSENT_REQUIRED" -> serverMessage ?: "Vui lòng xác nhận người được giới thiệu đã đồng ý chia sẻ thông tin."
@@ -165,7 +167,8 @@ object ApiErrorParser {
             "ATTENDANCE_ACTION_ALREADY_RECORDED" -> serverMessage ?: "Thao tác chấm công này đã được ghi nhận trong ngày hôm nay."
             "IDEMPOTENCY_REQUIRED", "IDEMPOTENCY_CONFLICT" ->
                 serverMessage ?: "Yêu cầu đang được xử lý hoặc bị trùng lặp. Vui lòng thử lại."
-            "RATE_LIMIT_EXCEEDED" -> serverMessage ?: "Bạn thao tác quá nhanh. Vui lòng đợi ít phút trước khi thử lại."
+            "RATE_LIMIT_EXCEEDED" ->
+                serverMessage ?: "Bạn thao tác quá nhanh hoặc đã vượt giới hạn gửi/nhập mã. Vui lòng đợi ít phút trước khi thử lại."
             else -> serverMessage ?: fallback
         }
     }

@@ -467,6 +467,170 @@ class HrpNetworkAndAuthTest {
         assertTrue(enriched.applicationGuide.contains("0968114696"))
         assertEquals("KCN BÌNH XUYÊN 1", enriched.employerAddress)
     }
+
+    @Test
+    fun `test ETrust OTP send and verify flow matches contract section 14_8 without calling real OTP service`() {
+        var lastOtpSendRequest: com.example.data.api.model.OtpSendRequest? = null
+        var lastOtpVerifyRequest: com.example.data.api.model.OtpVerifyRequest? = null
+        var nextSendResponse = com.example.data.api.model.ApiResponse(
+            ok = true,
+            data = com.example.data.api.model.OtpSendData(sent = true, cooldownSeconds = 60)
+        )
+        var nextVerifyResponse = com.example.data.api.model.ApiResponse(
+            ok = true,
+            data = com.example.data.api.model.OtpVerifyData(
+                phoneVerified = true,
+                verifiedAt = "2026-10-20T08:00:00.000Z"
+            )
+        )
+
+        val fakeApi = java.lang.reflect.Proxy.newProxyInstance(
+            com.example.data.api.HrpApiService::class.java.classLoader,
+            arrayOf(com.example.data.api.HrpApiService::class.java)
+        ) { _, method, args ->
+            when (method.name) {
+                "register" -> com.example.data.api.model.ApiResponse(
+                    ok = true,
+                    data = com.example.data.api.model.RegisterData(
+                        userId = "usr-etrust-01",
+                        phone = "0912345678",
+                        fullName = "Nguyễn Văn OTP",
+                        role = "WORKER",
+                        phoneVerified = false,
+                        token = "jwt_etrust_session_token"
+                    )
+                )
+                "sendPhoneOtp" -> {
+                    lastOtpSendRequest = args?.getOrNull(0) as? com.example.data.api.model.OtpSendRequest
+                    nextSendResponse
+                }
+                "verifyPhoneOtp" -> {
+                    lastOtpVerifyRequest = args?.getOrNull(0) as? com.example.data.api.model.OtpVerifyRequest
+                    nextVerifyResponse
+                }
+                else -> throw UnsupportedOperationException("Unexpected API call in OTP unit test: ${method.name}")
+            }
+        } as com.example.data.api.HrpApiService
+
+        val tokenManager = TokenManager(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        val repo = com.example.data.repository.HrpRepository(apiService = fakeApi, tokenManager = tokenManager)
+
+        kotlinx.coroutines.runBlocking {
+            tokenManager.clearToken()
+            // 1. Register creates Bearer session with phoneVerified = false
+            val regResult = repo.register("0912345678", "password123", "Nguyễn Văn OTP")
+            assertTrue(regResult.isSuccess)
+            assertEquals("jwt_etrust_session_token", tokenManager.getToken())
+            assertEquals("0912345678", repo.workerProfile.value.phone)
+            assertFalse(repo.workerProfile.value.phoneVerified)
+
+            // 2. Sending OTP with a phone different from the registered account phone is rejected
+            val mismatchResult = repo.sendPhoneOtp("0987654321")
+            assertTrue(mismatchResult.isFailure)
+            assertEquals(null, lastOtpSendRequest)
+
+            // 3. Sending OTP with matching account phone succeeds and returns cooldownSeconds = 60
+            val sendResult = repo.sendPhoneOtp("0912345678")
+            assertTrue(sendResult.isSuccess)
+            assertEquals(60, sendResult.getOrNull()?.cooldownSeconds)
+            assertEquals("0912345678", lastOtpSendRequest?.phone)
+
+            // 4. Verify OTP requires strictly 6 digits
+            val shortOtpResult = repo.verifyPhoneOtp("12345")
+            assertTrue(shortOtpResult.isFailure)
+            assertFalse(repo.workerProfile.value.phoneVerified)
+
+            val nonDigitOtpResult = repo.verifyPhoneOtp("12345a")
+            assertTrue(nonDigitOtpResult.isFailure)
+            assertFalse(repo.workerProfile.value.phoneVerified)
+
+            // 5. Verify OTP does NOT mark verified if verifiedAt is missing or phoneVerified=false
+            nextVerifyResponse = com.example.data.api.model.ApiResponse(
+                ok = true,
+                data = com.example.data.api.model.OtpVerifyData(phoneVerified = true, verifiedAt = "")
+            )
+            val missingVerifiedAtResult = repo.verifyPhoneOtp("123456")
+            assertTrue(missingVerifiedAtResult.isFailure)
+            assertFalse(repo.workerProfile.value.phoneVerified)
+
+            // 6. Verify OTP updates phoneVerified=true only when ok=true, phoneVerified=true, and verifiedAt is present
+            nextVerifyResponse = com.example.data.api.model.ApiResponse(
+                ok = true,
+                data = com.example.data.api.model.OtpVerifyData(
+                    phoneVerified = true,
+                    verifiedAt = "2026-10-20T08:05:00.000Z"
+                )
+            )
+            val verifySuccessResult = repo.verifyPhoneOtp("123456")
+            assertTrue(verifySuccessResult.isSuccess)
+            assertEquals("123456", lastOtpVerifyRequest?.code)
+            assertTrue(repo.workerProfile.value.phoneVerified)
+        }
+    }
+
+    @Test
+    fun `test ETrust OTP surfaces contract error codes OTP_SERVICE_UNAVAILABLE OTP_INVALID_OR_EXPIRED and RATE_LIMIT_EXCEEDED`() {
+        var sendErrorCode = "OTP_SERVICE_UNAVAILABLE"
+        var verifyErrorCode = "OTP_INVALID_OR_EXPIRED"
+
+        val fakeApi = java.lang.reflect.Proxy.newProxyInstance(
+            com.example.data.api.HrpApiService::class.java.classLoader,
+            arrayOf(com.example.data.api.HrpApiService::class.java)
+        ) { _, method, _ ->
+            when (method.name) {
+                "register" -> com.example.data.api.model.ApiResponse(
+                    ok = true,
+                    data = com.example.data.api.model.RegisterData(
+                        userId = "usr-etrust-02",
+                        phone = "0912345678",
+                        fullName = "Trần Thị B",
+                        role = "WORKER",
+                        phoneVerified = false,
+                        token = "jwt_etrust_session_token_2"
+                    )
+                )
+                "sendPhoneOtp" -> com.example.data.api.model.ApiResponse<com.example.data.api.model.OtpSendData>(
+                    ok = false,
+                    error = ApiError(code = sendErrorCode, message = "")
+                )
+                "verifyPhoneOtp" -> com.example.data.api.model.ApiResponse<com.example.data.api.model.OtpVerifyData>(
+                    ok = false,
+                    error = ApiError(code = verifyErrorCode, message = "")
+                )
+                else -> throw UnsupportedOperationException("Unexpected API call: ${method.name}")
+            }
+        } as com.example.data.api.HrpApiService
+
+        val tokenManager = TokenManager(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        val repo = com.example.data.repository.HrpRepository(apiService = fakeApi, tokenManager = tokenManager)
+
+        kotlinx.coroutines.runBlocking {
+            tokenManager.clearToken()
+            repo.register("0912345678", "password123", "Trần Thị B")
+
+            // Test OTP_SERVICE_UNAVAILABLE
+            sendErrorCode = "OTP_SERVICE_UNAVAILABLE"
+            val unavailableRes = repo.sendPhoneOtp("0912345678")
+            assertTrue(unavailableRes.isFailure)
+            val unavailableEx = unavailableRes.exceptionOrNull() as com.example.data.api.model.HrpApiException
+            assertEquals("OTP_SERVICE_UNAVAILABLE", unavailableEx.code)
+
+            // Test RATE_LIMIT_EXCEEDED
+            sendErrorCode = "RATE_LIMIT_EXCEEDED"
+            val rateLimitRes = repo.sendPhoneOtp("0912345678")
+            assertTrue(rateLimitRes.isFailure)
+            val rateLimitEx = rateLimitRes.exceptionOrNull() as com.example.data.api.model.HrpApiException
+            assertEquals("RATE_LIMIT_EXCEEDED", rateLimitEx.code)
+
+            // Test OTP_INVALID_OR_EXPIRED
+            verifyErrorCode = "OTP_INVALID_OR_EXPIRED"
+            val invalidOtpRes = repo.verifyPhoneOtp("654321")
+            assertTrue(invalidOtpRes.isFailure)
+            val invalidOtpEx = invalidOtpRes.exceptionOrNull() as com.example.data.api.model.HrpApiException
+            assertEquals("OTP_INVALID_OR_EXPIRED", invalidOtpEx.code)
+            assertFalse(repo.workerProfile.value.phoneVerified)
+        }
+    }
 }
 
 

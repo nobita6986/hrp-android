@@ -4,11 +4,13 @@ import android.content.Context
 import android.util.Log
 import com.example.data.api.ApiClient
 import com.example.data.api.HrpApiService
+import com.example.data.api.model.ApiError
 import com.example.data.api.model.ApiErrorParser
 import com.example.data.api.model.CheckInEventData
 import com.example.data.api.model.CheckInEventRequest
 import com.example.data.api.model.DeviceRegistrationRequest
 import com.example.data.api.model.FeedbackSubmitRequest
+import com.example.data.api.model.HrpApiException
 import com.example.data.api.model.JobApplicationRequest
 import com.example.data.api.model.JobApplicationResponse
 import com.example.data.api.model.JobDetailHtmlParser
@@ -56,6 +58,7 @@ object HrpFormatters {
     private val vnLocale = Locale("vi", "VN")
     private val currencyFormat = NumberFormat.getCurrencyInstance(vnLocale)
     private val STRICT_VN_PHONE_REGEX = Regex("^0\\d{9}$")
+    private val STRICT_OTP_6_DIGIT_REGEX = Regex("^\\d{6}$")
 
     /**
      * Strictly validates that phone is 10 digits starting with '0'.
@@ -63,6 +66,13 @@ object HrpFormatters {
      */
     fun isValidStrictVnPhone(phone: String): Boolean {
         return STRICT_VN_PHONE_REGEX.matches(phone)
+    }
+
+    /**
+     * Strictly validates that OTP code is 6 numeric digits per contract §14.8.
+     */
+    fun isValidOtpCode(code: String): Boolean {
+        return STRICT_OTP_6_DIGIT_REGEX.matches(code)
     }
 
     fun formatVnd(amount: Long): String {
@@ -404,16 +414,49 @@ class HrpRepository(
     }
 
     /**
-     * Endpoint 3: POST /api/auth/phone-otp/send (Deferred in current wave)
+     * Endpoint 3: POST /api/auth/phone-otp/send
+     * Contract §14.8: Bearer auth, body { "phone": "09xxxxxxxx" }.
+     * Phone must be 10 digits starting with '0' and match the phone currently stored in the account.
+     * Success: { "ok": true, "data": { "sent": true, "cooldownSeconds": 60 } }.
      */
-    suspend fun sendPhoneOtp(phone: String): Result<OtpSendData> = withContext(Dispatchers.IO) {
+    suspend fun sendPhoneOtp(phone: String = _workerProfile.value.phone): Result<OtpSendData> = withContext(Dispatchers.IO) {
+        val accountPhone = _workerProfile.value.phone.trim().ifBlank { tokenManager?.getPhone()?.trim().orEmpty() }
+        val targetPhone = phone.trim().ifBlank { accountPhone }
+
+        if (!HrpFormatters.isValidStrictVnPhone(targetPhone)) {
+            return@withContext Result.failure(
+                HrpApiException(
+                    code = "VALIDATION_ERROR",
+                    message = "Số điện thoại phải gồm đúng 10 chữ số, bắt đầu bằng 0 (không dùng +84, khoảng trắng hoặc dấu phân cách).",
+                    httpCode = 400
+                )
+            )
+        }
+        if (accountPhone.isNotBlank() && targetPhone != accountPhone) {
+            return@withContext Result.failure(
+                HrpApiException(
+                    code = "VALIDATION_ERROR",
+                    message = "Số điện thoại gửi OTP phải khớp với số điện thoại trong tài khoản ($accountPhone).",
+                    httpCode = 400
+                )
+            )
+        }
+
         try {
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
-            val response = api.sendPhoneOtp(OtpSendRequest(phone = phone))
-            if (response.isSuccessful && response.data != null) {
-                Result.success(response.data)
+            val response = api.sendPhoneOtp(OtpSendRequest(phone = targetPhone))
+            val data = response.data
+            if (response.isSuccessful && data != null && data.sent) {
+                Result.success(data)
             } else {
-                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = response.message ?: "Không thể gửi mã OTP"))
+                val fallbackCode = response.error?.code ?: "OTP_SERVICE_UNAVAILABLE"
+                val fallbackHttp = if (fallbackCode.equals("OTP_SERVICE_UNAVAILABLE", ignoreCase = true)) 503 else 400
+                val err = ApiErrorParser.fromApiError(
+                    error = response.error ?: ApiError(code = fallbackCode, message = response.message.orEmpty()),
+                    httpCode = fallbackHttp,
+                    fallbackMessage = response.message ?: "Không thể gửi mã OTP"
+                )
+                Result.failure(err)
             }
         } catch (t: Throwable) {
             Result.failure(ApiErrorParser.parseThrowable(t, "Hệ thống gửi mã OTP đang tạm gián đoạn"))
@@ -421,19 +464,45 @@ class HrpRepository(
     }
 
     /**
-     * Endpoint 4: POST /api/auth/phone-otp/verify (Deferred in current wave)
+     * Endpoint 4: POST /api/auth/phone-otp/verify
+     * Contract §14.8: Bearer auth, body { "code": "123456" } (6 digits).
+     * Only marks phoneVerified=true when backend returns { "ok": true, "data": { "phoneVerified": true, "verifiedAt": "..." } }.
      */
     suspend fun verifyPhoneOtp(code: String): Result<OtpVerifyData> = withContext(Dispatchers.IO) {
+        val trimmedCode = code.trim()
+        if (!HrpFormatters.isValidOtpCode(trimmedCode)) {
+            return@withContext Result.failure(
+                HrpApiException(
+                    code = "OTP_INVALID_OR_EXPIRED",
+                    message = "Mã OTP phải gồm đúng 6 chữ số.",
+                    httpCode = 400
+                )
+            )
+        }
         try {
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
-            val response = api.verifyPhoneOtp(OtpVerifyRequest(code = code))
-            if (response.isSuccessful && response.data != null) {
-                val isVerified = response.data.phoneVerified
-                tokenManager?.updatePhoneVerified(isVerified)
-                _workerProfile.value = _workerProfile.value.copy(phoneVerified = isVerified)
-                Result.success(response.data)
+            val response = api.verifyPhoneOtp(OtpVerifyRequest(code = trimmedCode))
+            val data = response.data
+            if (response.isSuccessful && data != null && data.phoneVerified && !data.verifiedAt.isNullOrBlank()) {
+                tokenManager?.updatePhoneVerified(true)
+                _workerProfile.value = _workerProfile.value.copy(phoneVerified = true)
+                Result.success(data)
             } else {
-                Result.failure(ApiErrorParser.fromApiError(response.error, fallbackMessage = response.message ?: "Mã OTP không hợp lệ"))
+                // Keep phoneVerified=false on any invalid/expired/unverified response
+                tokenManager?.updatePhoneVerified(false)
+                _workerProfile.value = _workerProfile.value.copy(phoneVerified = false)
+                val fallbackCode = response.error?.code ?: "OTP_INVALID_OR_EXPIRED"
+                val fallbackHttp = when (fallbackCode.uppercase()) {
+                    "OTP_SERVICE_UNAVAILABLE" -> 503
+                    "RATE_LIMIT_EXCEEDED" -> 429
+                    else -> 400
+                }
+                val err = ApiErrorParser.fromApiError(
+                    error = response.error ?: ApiError(code = fallbackCode, message = response.message.orEmpty()),
+                    httpCode = fallbackHttp,
+                    fallbackMessage = response.message ?: "Mã OTP không chính xác hoặc đã hết hạn."
+                )
+                Result.failure(err)
             }
         } catch (t: Throwable) {
             Result.failure(ApiErrorParser.parseThrowable(t, "Xác thực OTP thất bại"))

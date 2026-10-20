@@ -74,6 +74,7 @@ fun CreateTicketModal(
     phoneVerified: Boolean = true,
     onSubmit: (type: TicketType, title: String, description: String, amount: Long?, dates: String?) -> Unit,
     onSubmitFeedback: ((category: FeedbackCategory, content: String) -> Unit)? = null,
+    onOpenPhoneOtp: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var selectedCategory by remember {
@@ -117,26 +118,49 @@ fun CreateTicketModal(
                             .fillMaxWidth()
                             .testTag("modal_feedback_otp_warning")
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier.padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.ErrorOutline,
-                                contentDescription = null,
-                                tint = HrpWarning,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Tài khoản chưa xác thực số điện thoại (phoneVerified = false). Cần xác thực OTP trước khi gửi góp ý — ứng dụng không giả lập gửi thành công.",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = HrpNavyDark,
-                                    fontSize = 11.sp,
-                                    lineHeight = 15.sp,
-                                    fontWeight = FontWeight.Medium
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = HrpWarning,
+                                    modifier = Modifier.size(18.dp)
                                 )
-                            )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Tài khoản chưa xác thực số điện thoại (phoneVerified = false). Cần xác thực OTP trước khi gửi góp ý — ứng dụng không giả lập gửi thành công.",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = HrpNavyDark,
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                )
+                            }
+                            if (onOpenPhoneOtp != null) {
+                                OutlinedButton(
+                                    onClick = {
+                                        onDismiss()
+                                        onOpenPhoneOtp()
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("modal_feedback_open_otp_button"),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Xác minh OTP ngay",
+                                        fontWeight = FontWeight.Bold,
+                                        color = HrpPrimary,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -395,7 +419,7 @@ fun PhoneOtpVerificationModal(
     onVerifyOtp: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var phoneInput by remember { mutableStateOf(phone) }
+    var phoneInput by remember(phone) { mutableStateOf(phone) }
     var otpCode by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -419,8 +443,13 @@ fun PhoneOtpVerificationModal(
             ) {
                 OutlinedTextField(
                     value = phoneInput,
-                    onValueChange = { phoneInput = it },
-                    label = { Text("Số điện thoại nhận mã") },
+                    onValueChange = { input ->
+                        if (phone.isBlank() && input.length <= 10) {
+                            phoneInput = input
+                        }
+                    },
+                    readOnly = phone.isNotBlank(),
+                    label = { Text("Số điện thoại nhận mã (theo tài khoản)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                     modifier = Modifier.fillMaxWidth().testTag("otp_phone_input"),
@@ -428,7 +457,7 @@ fun PhoneOtpVerificationModal(
                 )
 
                 OutlinedButton(
-                    onClick = { onSendOtp(phoneInput) },
+                    onClick = { onSendOtp(phoneInput.trim()) },
                     enabled = !isSendingOtp && cooldownSeconds <= 0 && phoneInput.isNotBlank(),
                     modifier = Modifier.fillMaxWidth().testTag("send_otp_button"),
                     shape = RoundedCornerShape(10.dp)
@@ -446,9 +475,14 @@ fun PhoneOtpVerificationModal(
 
                 OutlinedTextField(
                     value = otpCode,
-                    onValueChange = { if (it.length <= 6) otpCode = it },
+                    onValueChange = { input ->
+                        val digitsOnly = input.filter { it.isDigit() }
+                        if (digitsOnly.length <= 6) {
+                            otpCode = digitsOnly
+                        }
+                    },
                     label = { Text("Mã OTP (6 chữ số)") },
-                    placeholder = { Text("Nhập mã OTP") },
+                    placeholder = { Text("Nhập 6 chữ số OTP") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth().testTag("otp_code_input"),
@@ -460,7 +494,9 @@ fun PhoneOtpVerificationModal(
                         shape = RoundedCornerShape(8.dp),
                         color = HrpError.copy(alpha = 0.1f),
                         border = androidx.compose.foundation.BorderStroke(1.dp, HrpError.copy(alpha = 0.3f)),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("otp_error_banner")
                     ) {
                         Row(
                             modifier = Modifier.padding(10.dp),
@@ -489,7 +525,7 @@ fun PhoneOtpVerificationModal(
         confirmButton = {
             Button(
                 onClick = { onVerifyOtp(otpCode) },
-                enabled = !isVerifyingOtp && otpCode.length >= 4,
+                enabled = !isVerifyingOtp && otpCode.length == 6,
                 colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary),
                 modifier = Modifier.testTag("verify_otp_confirm_button")
             ) {
