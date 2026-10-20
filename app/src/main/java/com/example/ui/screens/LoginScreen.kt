@@ -5,7 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,12 +13,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -51,7 +50,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -97,24 +95,25 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .systemBarsPadding()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
+                .padding(horizontal = 20.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Top
         ) {
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Branding Header
             Surface(
-                modifier = Modifier.size(width = 110.dp, height = 88.dp),
-                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.size(width = 92.dp, height = 70.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = Color.White,
                 shadowElevation = 2.dp,
                 border = androidx.compose.foundation.BorderStroke(1.dp, HrpSurfaceBorder)
             ) {
                 Box(
                     contentAlignment = Alignment.Center,
-                    modifier = Modifier.padding(10.dp)
+                    modifier = Modifier.padding(8.dp)
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.hrp_logo),
@@ -124,14 +123,15 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
                 text = "HR PARTNER",
-                style = MaterialTheme.typography.headlineMedium.copy(
+                style = MaterialTheme.typography.headlineSmall.copy(
                     fontWeight = FontWeight.ExtraBold,
                     color = HrpNavyDark,
-                    letterSpacing = 1.sp
+                    letterSpacing = 1.sp,
+                    fontSize = 22.sp
                 )
             )
 
@@ -139,11 +139,11 @@ fun LoginScreen(
                 text = "Ứng Dụng Dành Cho Người Lao Động & Tìm Việc",
                 style = MaterialTheme.typography.bodyMedium.copy(
                     color = HrpTextSecondary,
-                    fontSize = 13.sp
+                    fontSize = 12.sp
                 )
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Login / Register Form Card
             Card(
@@ -156,14 +156,14 @@ fun LoginScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp)
+                        .padding(horizontal = 18.dp, vertical = 14.dp)
                 ) {
                     Text(
                         text = if (isRegisterMode) "Đăng Ký Tài Khoản Mới" else "Đăng Nhập Tài Khoản",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = HrpNavyDark,
-                            fontSize = 17.sp
+                            fontSize = 16.sp
                         )
                     )
                     Text(
@@ -178,7 +178,7 @@ fun LoginScreen(
                         )
                     )
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     AnimatedVisibility(visible = isRegisterMode) {
                         Column {
@@ -209,7 +209,7 @@ fun LoginScreen(
                                     .fillMaxWidth()
                                     .testTag("register_fullname_input")
                             )
-                            Spacer(modifier = Modifier.height(14.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
 
@@ -256,7 +256,7 @@ fun LoginScreen(
                             .testTag("login_phone_input")
                     )
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // Password input
                     OutlinedTextField(
@@ -309,27 +309,6 @@ fun LoginScreen(
                             .testTag("login_password_input")
                     )
 
-                    AnimatedVisibility(visible = isRegisterMode) {
-                        Column {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = HrpPrimarySoft,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "Tài khoản mới có thể xem việc làm và ứng tuyển ngay. Số điện thoại khởi tạo ở trạng thái chưa xác minh OTP (phoneVerified=false); tính năng Góp ý cần xác minh OTP và Chấm công/Giới thiệu cần hồ sơ Worker được phân công ACTIVE.",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        color = HrpNavyDark,
-                                        fontSize = 11.sp,
-                                        lineHeight = 15.sp
-                                    ),
-                                    modifier = Modifier.padding(10.dp)
-                                )
-                            }
-                        }
-                    }
-
                     // Error Alert Banner
                     AnimatedVisibility(
                         visible = errorMessage != null,
@@ -337,7 +316,7 @@ fun LoginScreen(
                         exit = fadeOut()
                     ) {
                         errorMessage?.let { error ->
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = HrpError.copy(alpha = 0.1f),
@@ -368,7 +347,7 @@ fun LoginScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // Submit Button
                     Button(
@@ -385,7 +364,7 @@ fun LoginScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp)
+                            .height(48.dp)
                             .testTag("login_submit_button")
                     ) {
                         if (isAuthenticating) {
@@ -409,7 +388,7 @@ fun LoginScreen(
                     }
 
                     if (onRegister != null) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.Center,
@@ -433,10 +412,31 @@ fun LoginScreen(
                             }
                         }
                     }
+
+                    AnimatedVisibility(visible = isRegisterMode) {
+                        Column {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = HrpPrimarySoft,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "Tài khoản mới có thể xem việc làm và ứng tuyển ngay. Số điện thoại khởi tạo ở trạng thái chưa xác minh OTP (phoneVerified=false); tính năng Góp ý cần xác minh OTP và Chấm công/Giới thiệu cần hồ sơ Worker được phân công ACTIVE.",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = HrpNavyDark,
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp
+                                    ),
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Text(
                 text = "Tổng đài hỗ trợ người lao động HRP: 0211.2216.999",
@@ -446,7 +446,7 @@ fun LoginScreen(
                 )
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }
