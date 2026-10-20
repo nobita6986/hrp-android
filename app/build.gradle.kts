@@ -58,7 +58,7 @@ android {
     create("demo") {
       initWith(buildTypes.getByName("debug"))
       matchingFallbacks += listOf("debug")
-      buildConfigField("Boolean", "ENABLE_DEMO_MODE", "true")
+      buildConfigField("Boolean", "ENABLE_DEMO_MODE", "false")
       buildConfigField("Boolean", "LOG_HTTP", "true")
       applicationIdSuffix = ".demo"
       versionNameSuffix = "-demo"

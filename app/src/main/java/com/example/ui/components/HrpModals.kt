@@ -71,7 +71,7 @@ import com.example.ui.theme.HrpWarning
 @Composable
 fun CreateTicketModal(
     initialType: TicketType = TicketType.OTHER,
-    phoneVerified: Boolean = true,
+    phoneVerified: Boolean = false,
     onSubmit: (type: TicketType, title: String, description: String, amount: Long?, dates: String?) -> Unit,
     onSubmitFeedback: ((category: FeedbackCategory, content: String) -> Unit)? = null,
     onOpenPhoneOtp: (() -> Unit)? = null,
@@ -202,7 +202,7 @@ fun CreateTicketModal(
         confirmButton = {
             Button(
                 onClick = {
-                    if (description.isNotBlank()) {
+                    if (phoneVerified && description.isNotBlank()) {
                         if (onSubmitFeedback != null) {
                             onSubmitFeedback(selectedCategory, description)
                         } else {
@@ -216,7 +216,7 @@ fun CreateTicketModal(
                         }
                     }
                 },
-                enabled = description.isNotBlank(),
+                enabled = phoneVerified && description.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary),
                 modifier = Modifier.testTag("submit_ticket_confirm_button")
             ) {
@@ -443,12 +443,8 @@ fun PhoneOtpVerificationModal(
             ) {
                 OutlinedTextField(
                     value = phoneInput,
-                    onValueChange = { input ->
-                        if (phone.isBlank() && input.length <= 10) {
-                            phoneInput = input
-                        }
-                    },
-                    readOnly = phone.isNotBlank(),
+                    onValueChange = {},
+                    readOnly = true,
                     label = { Text("Số điện thoại nhận mã (theo tài khoản)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),

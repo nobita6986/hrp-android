@@ -255,11 +255,11 @@ class HrpViewModel(
     fun sendPhoneOtp(phone: String = workerProfile.value.phone) {
         val accountPhone = workerProfile.value.phone.trim().ifBlank { tokenManager.getPhone()?.trim().orEmpty() }
         val targetPhone = phone.trim().ifBlank { accountPhone }
-        if (targetPhone.isBlank()) {
+        if (accountPhone.isBlank() || targetPhone.isBlank()) {
             _otpErrorMessage.value = "Không tìm thấy số điện thoại trong tài khoản để gửi mã OTP."
             return
         }
-        if (accountPhone.isNotBlank() && targetPhone != accountPhone) {
+        if (targetPhone != accountPhone) {
             _otpErrorMessage.value = "Số điện thoại gửi OTP phải khớp với số điện thoại trong tài khoản ($accountPhone)."
             return
         }
@@ -394,7 +394,11 @@ class HrpViewModel(
                         repository.fetchAttendance()
                     }
                 }
-                NavigationTab.FEEDBACK -> repository.fetchMyFeedback()
+                NavigationTab.FEEDBACK -> {
+                    if (workerProfile.value.phoneVerified) {
+                        repository.fetchMyFeedback()
+                    }
+                }
                 NavigationTab.REFERRAL -> {
                     repository.fetchReferralProgram()
                     if (workerProfile.value.canCheckIn || workerProfile.value.hasActiveAssignment || workerProfile.value.verificationStatus == VerificationStatus.APPROVED) {

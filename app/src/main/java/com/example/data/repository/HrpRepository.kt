@@ -278,7 +278,10 @@ class HrpRepository(
                 val resolvedPhone = data.phone.takeIf { it.isNotBlank() } ?: phone
                 // Strictly respect backend phoneVerified (false on new registration; never auto-verify)
                 val isPhoneVerified = data.phoneVerified
-                val sessionToken = data.token?.takeIf { it.isNotBlank() } ?: tokenManager?.getToken()
+                val sessionToken = data.token?.takeIf { it.isNotBlank() }
+
+                // Clear any previous session state before storing the new registration session
+                tokenManager?.clearToken()
 
                 if (!sessionToken.isNullOrBlank()) {
                     tokenManager?.saveUserSession(
@@ -290,6 +293,8 @@ class HrpRepository(
                         verificationStatus = "NONE",
                         hasActiveAssignment = false
                     )
+                } else {
+                    tokenManager?.updatePhoneVerified(false)
                 }
 
                 _currentRole.value = UserRole.WORKER
@@ -341,8 +346,8 @@ class HrpRepository(
         try {
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
             val response = api.login(LoginRequest(phone, password))
-            val hasSession = !response.token.isNullOrBlank() || tokenManager?.isLoggedIn() == true
-            if (response.ok && response.success && (response.token != null || hasSession)) {
+            val sessionToken = response.token?.takeIf { it.isNotBlank() }
+            if ((response.ok || response.success) && !sessionToken.isNullOrBlank()) {
                 val roleStr = response.role ?: response.user?.role ?: "WORKER"
                 if (!roleStr.equals("WORKER", ignoreCase = true)) {
                     tokenManager?.clearToken()
@@ -351,7 +356,7 @@ class HrpRepository(
                     )
                 }
 
-                val token = response.token ?: tokenManager?.getToken() ?: "session_valid"
+                val token = sessionToken
                 val accountUser = response.user
                 val workerDto = response.worker
 
@@ -423,6 +428,15 @@ class HrpRepository(
         val accountPhone = _workerProfile.value.phone.trim().ifBlank { tokenManager?.getPhone()?.trim().orEmpty() }
         val targetPhone = phone.trim().ifBlank { accountPhone }
 
+        if (accountPhone.isBlank()) {
+            return@withContext Result.failure(
+                HrpApiException(
+                    code = "VALIDATION_ERROR",
+                    message = "Không tìm thấy số điện thoại trong tài khoản đã đăng nhập để gửi mã OTP.",
+                    httpCode = 400
+                )
+            )
+        }
         if (!HrpFormatters.isValidStrictVnPhone(targetPhone)) {
             return@withContext Result.failure(
                 HrpApiException(
@@ -432,7 +446,7 @@ class HrpRepository(
                 )
             )
         }
-        if (accountPhone.isNotBlank() && targetPhone != accountPhone) {
+        if (targetPhone != accountPhone) {
             return@withContext Result.failure(
                 HrpApiException(
                     code = "VALIDATION_ERROR",
@@ -505,6 +519,8 @@ class HrpRepository(
                 Result.failure(err)
             }
         } catch (t: Throwable) {
+            tokenManager?.updatePhoneVerified(false)
+            _workerProfile.value = _workerProfile.value.copy(phoneVerified = false)
             Result.failure(ApiErrorParser.parseThrowable(t, "Xác thực OTP thất bại"))
         }
     }
@@ -548,7 +564,12 @@ class HrpRepository(
         } else {
             _attendanceList.value = emptyList()
         }
-        fetchTickets()
+        if (_workerProfile.value.phoneVerified) {
+            fetchTickets()
+        } else {
+            _feedbackList.value = emptyList()
+            _tickets.value = emptyList()
+        }
         fetchJobs()
         fetchReferralProgram()
         if (_workerProfile.value.canCheckIn || _workerProfile.value.hasActiveAssignment) {

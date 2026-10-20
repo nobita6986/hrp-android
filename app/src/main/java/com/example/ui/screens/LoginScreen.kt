@@ -81,11 +81,10 @@ fun LoginScreen(
     onRegister: ((phone: String, pass: String, fullName: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val isDemo = com.example.utils.AppConfig.isDemoMode
     var isRegisterMode by remember { mutableStateOf(false) }
     var fullName by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf(if (isDemo) "0987654321" else "") }
-    var password by remember { mutableStateOf(if (isDemo) "123456" else "") }
+    var phone by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
@@ -437,32 +436,6 @@ fun LoginScreen(
                 }
             }
 
-            if (isDemo) {
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = "TÀI KHOẢN MẪU NGƯỜI LAO ĐỘNG (DEMO)",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        color = HrpTextSecondary,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                DemoAccountItem(
-                    roleName = "Người Lao Động / Công Nhân",
-                    phoneExample = "0987654321",
-                    icon = Icons.Default.Person,
-                    onClick = {
-                        isRegisterMode = false
-                        phone = "0987654321"
-                        password = "123456"
-                    }
-                )
-            }
-
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
@@ -474,70 +447,6 @@ fun LoginScreen(
             )
 
             Spacer(modifier = Modifier.height(20.dp))
-        }
-    }
-}
-
-@Composable
-private fun DemoAccountItem(
-    roleName: String,
-    phoneExample: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = HrpSurface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, HrpSurfaceBorder),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(HrpPrimarySoft),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = HrpPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
-                    Text(
-                        text = roleName,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = HrpNavyDark
-                        )
-                    )
-                    Text(
-                        text = "SĐT: $phoneExample • MK: 123456",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = HrpTextSecondary,
-                            fontSize = 10.sp
-                        )
-                    )
-                }
-            }
-
-            Text(
-                text = "Chọn",
-                color = HrpPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp
-            )
         }
     }
 }

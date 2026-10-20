@@ -63,7 +63,7 @@ import com.example.ui.theme.HrpWarning
 @Composable
 fun TicketScreen(
     tickets: List<TicketItem>,
-    phoneVerified: Boolean = true,
+    phoneVerified: Boolean = false,
     onCreateTicketClick: () -> Unit,
     onOpenPhoneOtp: () -> Unit = {},
     modifier: Modifier = Modifier

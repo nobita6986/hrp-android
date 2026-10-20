@@ -30,8 +30,8 @@ import retrofit2.HttpException
  */
 @JsonClass(generateAdapter = true)
 data class ApiResponse<T>(
-    @param:Json(name = "ok") val ok: Boolean = true,
-    @param:Json(name = "success") val success: Boolean = true,
+    @param:Json(name = "ok") val ok: Boolean = false,
+    @param:Json(name = "success") val success: Boolean = false,
     @param:Json(name = "message") val message: String? = null,
     @param:Json(name = "data") val data: T? = null,
     @param:Json(name = "error") val error: ApiError? = null
@@ -218,8 +218,8 @@ data class AccountUserDto(
 
 @JsonClass(generateAdapter = true)
 data class LoginResponse(
-    @param:Json(name = "ok") val ok: Boolean = true,
-    @param:Json(name = "success") val success: Boolean = true,
+    @param:Json(name = "ok") val ok: Boolean = false,
+    @param:Json(name = "success") val success: Boolean = false,
     @param:Json(name = "redirectTo") val redirectTo: String? = null,
     @param:Json(name = "token") val token: String? = null,
     @param:Json(name = "role") val role: String? = null,

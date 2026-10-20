@@ -629,6 +629,80 @@ class HrpNetworkAndAuthTest {
             val invalidOtpEx = invalidOtpRes.exceptionOrNull() as com.example.data.api.model.HrpApiException
             assertEquals("OTP_INVALID_OR_EXPIRED", invalidOtpEx.code)
             assertFalse(repo.workerProfile.value.phoneVerified)
+            assertFalse(tokenManager.isPhoneVerified())
+
+            // Feedback and Ticket creation must be strictly blocked while phoneVerified == false
+            val feedbackBlocked = repo.submitFeedback(FeedbackCategory.SUGGESTION, "Góp ý thử nghiệm khi chưa xác thực OTP")
+            assertTrue(feedbackBlocked.isFailure)
+            val ticketBlocked = repo.createTicket(TicketType.OTHER, "Tiêu đề", "Nội dung yêu cầu khi chưa xác thực OTP")
+            assertTrue(ticketBlocked.isFailure)
+        }
+    }
+
+    @Test
+    fun `test ETrust OTP handles non-2xx HttpException and enforces fail-closed defaults`() {
+        // ApiResponse must be fail-closed by default (ok = false)
+        val defaultEnvelope = com.example.data.api.model.ApiResponse<com.example.data.api.model.OtpVerifyData>()
+        assertFalse(defaultEnvelope.ok)
+        assertFalse(defaultEnvelope.isSuccessful)
+
+        var httpStatus = 503
+        var errorBodyJson = """{"ok":false,"error":{"code":"OTP_SERVICE_UNAVAILABLE","message":"ETrust tạm ngừng"}}"""
+
+        val fakeApi = java.lang.reflect.Proxy.newProxyInstance(
+            com.example.data.api.HrpApiService::class.java.classLoader,
+            arrayOf(com.example.data.api.HrpApiService::class.java)
+        ) { _, method, _ ->
+            when (method.name) {
+                "register" -> com.example.data.api.model.ApiResponse(
+                    ok = true,
+                    data = com.example.data.api.model.RegisterData(
+                        userId = "usr-etrust-http-err",
+                        phone = "0912345678",
+                        fullName = "Lê Văn C",
+                        role = "WORKER",
+                        phoneVerified = false,
+                        token = "jwt_etrust_session_token_3"
+                    )
+                )
+                "sendPhoneOtp", "verifyPhoneOtp" -> {
+                    val body = okhttp3.ResponseBody.create(null, errorBodyJson)
+                    throw retrofit2.HttpException(retrofit2.Response.error<Any>(httpStatus, body))
+                }
+                else -> throw UnsupportedOperationException("Unexpected API call: ${method.name}")
+            }
+        } as com.example.data.api.HrpApiService
+
+        val tokenManager = TokenManager(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        val repo = com.example.data.repository.HrpRepository(apiService = fakeApi, tokenManager = tokenManager)
+
+        kotlinx.coroutines.runBlocking {
+            tokenManager.clearToken()
+
+            // When no account phone is in session, sendPhoneOtp must fail immediately
+            val blankAccountSend = repo.sendPhoneOtp("0912345678")
+            assertTrue(blankAccountSend.isFailure)
+
+            // Register sets phone = 0912345678, phoneVerified = false
+            repo.register("0912345678", "password123", "Lê Văn C")
+            assertFalse(repo.workerProfile.value.phoneVerified)
+
+            // HTTP 503 HttpException on sendPhoneOtp
+            httpStatus = 503
+            errorBodyJson = """{"ok":false,"error":{"code":"OTP_SERVICE_UNAVAILABLE","message":"ETrust tạm ngừng"}}"""
+            val send503 = repo.sendPhoneOtp("0912345678")
+            assertTrue(send503.isFailure)
+            assertEquals("OTP_SERVICE_UNAVAILABLE", (send503.exceptionOrNull() as com.example.data.api.model.HrpApiException).code)
+
+            // HTTP 400 HttpException on verifyPhoneOtp resets any stale phoneVerified state to false
+            tokenManager.updatePhoneVerified(true)
+            httpStatus = 400
+            errorBodyJson = """{"ok":false,"error":{"code":"OTP_INVALID_OR_EXPIRED","message":"Mã OTP hết hạn"}}"""
+            val verify400 = repo.verifyPhoneOtp("123456")
+            assertTrue(verify400.isFailure)
+            assertEquals("OTP_INVALID_OR_EXPIRED", (verify400.exceptionOrNull() as com.example.data.api.model.HrpApiException).code)
+            assertFalse(repo.workerProfile.value.phoneVerified)
+            assertFalse(tokenManager.isPhoneVerified())
         }
     }
 }
