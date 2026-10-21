@@ -97,16 +97,16 @@ fun LoginScreen(
                 .systemBarsPadding()
                 .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             // Branding Header
             Surface(
-                modifier = Modifier.size(width = 92.dp, height = 70.dp),
-                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.size(width = 100.dp, height = 78.dp),
+                shape = RoundedCornerShape(18.dp),
                 color = Color.White,
                 shadowElevation = 2.dp,
                 border = androidx.compose.foundation.BorderStroke(1.dp, HrpSurfaceBorder)
@@ -123,7 +123,7 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Text(
                 text = "HR PARTNER",
@@ -131,7 +131,7 @@ fun LoginScreen(
                     fontWeight = FontWeight.ExtraBold,
                     color = HrpNavyDark,
                     letterSpacing = 1.sp,
-                    fontSize = 22.sp
+                    fontSize = 23.sp
                 )
             )
 
@@ -143,7 +143,7 @@ fun LoginScreen(
                 )
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Login / Register Form Card
             Card(
