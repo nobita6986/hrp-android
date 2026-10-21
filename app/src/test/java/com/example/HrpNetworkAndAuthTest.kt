@@ -138,9 +138,12 @@ class HrpNetworkAndAuthTest {
         assertEquals(VerificationStatus.APPROVED, profile.verificationStatus)
         assertTrue(profile.factoryLocation.contains("Samsung Thái Nguyên"))
 
-        // Case where Site GPS is NOT yet confirmed by Admin (geoConfirmedAt = null)
+        // Case where Site GPS is NOT yet confirmed by Admin (geoConfirmedAt = null -> backend sets canCheckIn = false)
         val unconfirmedSiteMeResponse = confirmedMeResponse.copy(
             assignment = confirmedMeResponse.assignment?.copy(
+                projectName = "PIAGGIO",
+                position = "CTY- PIAGGIO - BÌNH XUYÊN 1",
+                employeeCode = "NV-4321",
                 sites = listOf(
                     WorkerAssignmentSiteDto(
                         id = "site-02",
@@ -150,12 +153,21 @@ class HrpNetworkAndAuthTest {
                         geoConfirmedAt = null
                     )
                 )
+            ),
+            mobileAccess = MobileAccessDto(
+                phoneVerified = true,
+                hasActiveAssignment = true,
+                hasConfiguredSiteGps = false,
+                siteGeofenceNotConfigured = true,
+                canCheckIn = false
             )
         )
         val unconfirmedProfile = unconfirmedSiteMeResponse.resolvedProfile()
         assertNotNull(unconfirmedProfile)
-        assertTrue(unconfirmedProfile!!.canCheckIn)
+        assertFalse(unconfirmedProfile!!.canCheckIn)
+        assertTrue(unconfirmedProfile.hasActiveAssignment)
         assertFalse(unconfirmedProfile.hasConfiguredSiteGps)
+        assertTrue(unconfirmedProfile.siteGeofenceNotConfigured)
     }
 
     @Test
@@ -754,6 +766,73 @@ class HrpNetworkAndAuthTest {
             assertEquals("Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.", err2.message)
             assertEquals(2, capturedIdempotencyKeys.size)
             assertEquals(capturedIdempotencyKeys[0], capturedIdempotencyKeys[1])
+        }
+    }
+
+    @Test
+    fun `performCheckIn and performCheckOut report missing Site GPS when hasActiveAssignment is true but canCheckIn is false due to unconfirmed Site GPS`() {
+        val fakeApi = java.lang.reflect.Proxy.newProxyInstance(
+            com.example.data.api.HrpApiService::class.java.classLoader,
+            arrayOf(com.example.data.api.HrpApiService::class.java)
+        ) { _, method, _ ->
+            when (method.name) {
+                "getProfile" -> WorkersMeResponse(
+                    ok = true,
+                    worker = WorkerProfileResponse(
+                        id = "w-piaggio-01",
+                        employeeCode = "NV-4321",
+                        fullName = "Duc Nguyen",
+                        phone = "0987654321",
+                        position = "CTY- PIAGGIO - BÌNH XUYÊN 1",
+                        profileStatus = "VERIFIED",
+                        employmentStatus = "ACTIVE"
+                    ),
+                    assignment = WorkerAssignmentDto(
+                        assignmentId = "asg-piaggio-01",
+                        projectId = "proj-piaggio",
+                        projectName = "PIAGGIO",
+                        status = "ACTIVE",
+                        employeeCode = "NV-4321",
+                        position = "CTY- PIAGGIO - BÌNH XUYÊN 1",
+                        sites = emptyList()
+                    ),
+                    mobileAccess = MobileAccessDto(
+                        phoneVerified = true,
+                        hasActiveAssignment = true,
+                        hasConfiguredSiteGps = false,
+                        siteGeofenceNotConfigured = true,
+                        canCheckIn = false
+                    )
+                )
+                else -> throw UnsupportedOperationException("Unexpected API call: ${method.name}")
+            }
+        } as com.example.data.api.HrpApiService
+
+        val tokenManager = TokenManager(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        val repo = com.example.data.repository.HrpRepository(apiService = fakeApi, tokenManager = tokenManager)
+
+        kotlinx.coroutines.runBlocking {
+            val profileRes = repo.fetchProfile()
+            assertTrue(profileRes.isSuccess)
+            val profile = repo.workerProfile.value
+            assertTrue(profile.hasActiveAssignment)
+            assertFalse(profile.hasConfiguredSiteGps)
+            assertTrue(profile.siteGeofenceNotConfigured)
+            assertFalse(profile.canCheckIn)
+
+            val checkInRes = repo.performCheckIn(latitude = 21.3, longitude = 105.6, accuracy = 10f)
+            assertTrue(checkInRes.isFailure)
+            assertEquals(
+                "Địa điểm làm việc (Site) của dự án chưa được Admin xác nhận tọa độ GPS nên chưa thể chấm công.",
+                checkInRes.exceptionOrNull()?.message
+            )
+
+            val checkOutRes = repo.performCheckOut(latitude = 21.3, longitude = 105.6, accuracy = 10f)
+            assertTrue(checkOutRes.isFailure)
+            assertEquals(
+                "Địa điểm làm việc (Site) của dự án chưa được Admin xác nhận tọa độ GPS nên chưa thể chấm công.",
+                checkOutRes.exceptionOrNull()?.message
+            )
         }
     }
 }

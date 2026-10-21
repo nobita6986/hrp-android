@@ -942,10 +942,18 @@ class HrpRepository(
         longitude: Double? = null,
         accuracy: Float? = null
     ): Result<AttendanceDay> = withContext(Dispatchers.IO) {
-        if (!_workerProfile.value.canCheckIn) {
-            return@withContext Result.failure(
-                Exception("Tài khoản chưa đủ điều kiện chấm công (cần được Admin liên kết hồ sơ công nhân và phân công dự án ACTIVE).")
-            )
+        val currentProfile = _workerProfile.value
+        if (!currentProfile.canCheckIn) {
+            val errorMsg = when {
+                currentProfile.hasActiveAssignment &&
+                    (!currentProfile.hasConfiguredSiteGps || currentProfile.siteGeofenceNotConfigured) ->
+                    "Địa điểm làm việc (Site) của dự án chưa được Admin xác nhận tọa độ GPS nên chưa thể chấm công."
+                currentProfile.hasActiveAssignment ->
+                    "Hồ sơ công nhân đang chờ hoàn tất kích hoạt chấm công."
+                else ->
+                    "Tài khoản chưa đủ điều kiện chấm công (cần được Admin liên kết hồ sơ công nhân và phân công dự án ACTIVE)."
+            }
+            return@withContext Result.failure(Exception(errorMsg))
         }
         if (latitude == null || longitude == null) {
             return@withContext Result.failure(Exception("Yêu cầu định vị GPS thực tế từ thiết bị để chấm công."))
@@ -982,10 +990,18 @@ class HrpRepository(
         longitude: Double? = null,
         accuracy: Float? = null
     ): Result<AttendanceDay> = withContext(Dispatchers.IO) {
-        if (!_workerProfile.value.canCheckIn) {
-            return@withContext Result.failure(
-                Exception("Tài khoản chưa đủ điều kiện chấm công (cần được Admin liên kết hồ sơ công nhân và phân công dự án ACTIVE).")
-            )
+        val currentProfile = _workerProfile.value
+        if (!currentProfile.canCheckIn) {
+            val errorMsg = when {
+                currentProfile.hasActiveAssignment &&
+                    (!currentProfile.hasConfiguredSiteGps || currentProfile.siteGeofenceNotConfigured) ->
+                    "Địa điểm làm việc (Site) của dự án chưa được Admin xác nhận tọa độ GPS nên chưa thể chấm công."
+                currentProfile.hasActiveAssignment ->
+                    "Hồ sơ công nhân đang chờ hoàn tất kích hoạt chấm công."
+                else ->
+                    "Tài khoản chưa đủ điều kiện chấm công (cần được Admin liên kết hồ sơ công nhân và phân công dự án ACTIVE)."
+            }
+            return@withContext Result.failure(Exception(errorMsg))
         }
         if (latitude == null || longitude == null) {
             return@withContext Result.failure(Exception("Yêu cầu định vị GPS thực tế từ thiết bị để kết thúc ca."))

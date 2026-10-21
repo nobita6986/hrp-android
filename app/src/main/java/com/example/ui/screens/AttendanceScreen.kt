@@ -80,6 +80,7 @@ fun AttendanceScreen(
     }
 
     val canCheckIn = workerProfile?.canCheckIn == true
+    val hasActiveAssignment = workerProfile?.hasActiveAssignment == true
     val isSiteGpsReady = workerProfile?.hasConfiguredSiteGps == true && !(workerProfile.siteGeofenceNotConfigured)
     val isActionEnabled = canCheckIn && isSiteGpsReady
     val siteSubtitle = workerProfile?.factoryLocation?.takeIf { it.isNotBlank() }
@@ -99,6 +100,7 @@ fun AttendanceScreen(
             AttendanceSummaryBanner(
                 siteSubtitle = siteSubtitle,
                 canCheckIn = canCheckIn,
+                hasActiveAssignment = hasActiveAssignment,
                 isSiteGpsReady = isSiteGpsReady,
                 totalDays = attendanceList.size,
                 approvedDays = attendanceList.count { it.status == AttendanceStatus.APPROVED },
@@ -186,7 +188,8 @@ fun AttendanceScreen(
                         Text(
                             text = when {
                                 isActionEnabled -> "Chưa có bản ghi chấm công nào trong kỳ này."
-                                canCheckIn && !isSiteGpsReady -> "Địa điểm làm việc (Site) của dự án chưa được Admin xác nhận tọa độ GPS chuẩn nên chưa thể ghi nhận chấm công."
+                                hasActiveAssignment && !isSiteGpsReady -> "Địa điểm làm việc (Site) của dự án chưa được Admin xác nhận tọa độ GPS chuẩn nên chưa thể ghi nhận chấm công."
+                                hasActiveAssignment && !canCheckIn -> "Hồ sơ công nhân đã có phân công dự án nhưng đang chờ hoàn tất kích hoạt trạng thái chấm công."
                                 else -> "Tài khoản cần được Quản trị viên HRP liên kết hồ sơ công nhân và phân công dự án ACTIVE để bắt đầu chấm công GPS."
                             },
                             color = HrpTextSecondary,
@@ -212,6 +215,7 @@ fun AttendanceScreen(
 private fun AttendanceSummaryBanner(
     siteSubtitle: String,
     canCheckIn: Boolean,
+    hasActiveAssignment: Boolean = false,
     isSiteGpsReady: Boolean,
     totalDays: Int,
     approvedDays: Int,
@@ -220,19 +224,23 @@ private fun AttendanceSummaryBanner(
     onCheckOut: () -> Unit
 ) {
     val isActionEnabled = canCheckIn && isSiteGpsReady
+    val isWaitingSiteGps = hasActiveAssignment && !isSiteGpsReady
     val badgeBg = when {
         isActionEnabled -> HrpSuccess.copy(alpha = 0.2f)
-        canCheckIn && !isSiteGpsReady -> HrpError.copy(alpha = 0.2f)
+        isWaitingSiteGps -> HrpError.copy(alpha = 0.2f)
+        hasActiveAssignment && !canCheckIn -> HrpWarning.copy(alpha = 0.2f)
         else -> HrpWarning.copy(alpha = 0.2f)
     }
     val badgeColor = when {
         isActionEnabled -> HrpSuccess
-        canCheckIn && !isSiteGpsReady -> HrpError
+        isWaitingSiteGps -> HrpError
+        hasActiveAssignment && !canCheckIn -> HrpWarning
         else -> HrpWarning
     }
     val badgeLabel = when {
         isActionEnabled -> "ĐỦ ĐIỀU KIỆN"
-        canCheckIn && !isSiteGpsReady -> "CHỜ XÁC NHẬN SITE"
+        isWaitingSiteGps -> "CHỜ XÁC NHẬN SITE"
+        hasActiveAssignment && !canCheckIn -> "ĐÃ PHÂN CÔNG"
         else -> "CHƯA MỞ QUYỀN"
     }
 
@@ -335,10 +343,10 @@ private fun AttendanceSummaryBanner(
                     }
                 }
             } else {
-                val lockExplanation = if (canCheckIn && !isSiteGpsReady) {
-                    "Tạm khóa Vào ca / Tan ca: Địa điểm làm việc (Site) của dự án chưa được Admin xác nhận tọa độ GPS chuẩn (SITE_GEOFENCE_NOT_CONFIGURED)."
-                } else {
-                    "Thao tác chấm công bị khóa (canCheckIn = false): Tài khoản cần được Admin liên kết hồ sơ công nhân và có phân công dự án đang hoạt động (ACTIVE)."
+                val lockExplanation = when {
+                    isWaitingSiteGps -> "Tạm khóa Vào ca / Tan ca: Địa điểm làm việc (Site) của dự án chưa được Admin xác nhận tọa độ GPS chuẩn (SITE_GEOFENCE_NOT_CONFIGURED)."
+                    hasActiveAssignment && !canCheckIn -> "Tạm khóa chấm công: Hồ sơ đang chờ hoàn tất kích hoạt chấm công."
+                    else -> "Thao tác chấm công bị khóa: Tài khoản cần được Admin liên kết hồ sơ công nhân và có phân công dự án đang hoạt động (ACTIVE)."
                 }
                 Box(
                     modifier = Modifier

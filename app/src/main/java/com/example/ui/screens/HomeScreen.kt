@@ -90,7 +90,7 @@ fun HomeScreen(
 ) {
     val approvedDays = attendanceList.count { it.status == AttendanceStatus.APPROVED }.toDouble()
     val otHours = attendanceList.sumOf { it.otHours }
-    val isSiteGpsLocked = workerProfile.canCheckIn &&
+    val isSiteGpsLocked = workerProfile.hasActiveAssignment &&
         (!workerProfile.hasConfiguredSiteGps || workerProfile.siteGeofenceNotConfigured)
 
     LazyColumn(
@@ -174,15 +174,21 @@ private fun MobileAccessStatusCard(
     onOpenPhoneOtp: () -> Unit = {}
 ) {
     val accentColor = if (isSiteGpsLocked) HrpError else HrpWarning
-    val titleText = if (isSiteGpsLocked) {
-        "Tạm khóa chấm công: Site chưa được Admin xác nhận GPS"
-    } else {
-        "Tài khoản chưa liên kết hồ sơ Worker / Assignment (canCheckIn = false)"
+    val titleText = when {
+        isSiteGpsLocked -> "Tạm khóa chấm công: Site chưa được Admin xác nhận GPS"
+        profile.hasActiveAssignment -> "Tạm khóa chấm công: Hồ sơ đang chờ hoàn tất kích hoạt chấm công"
+        else -> "Tài khoản chưa liên kết hồ sơ Worker / Assignment"
     }
-    val subtitleText = if (isSiteGpsLocked) {
-        "Dự án ${profile.projectName.ifBlank { profile.factoryLocation.ifBlank { "hiện tại" } }} chưa có địa điểm làm việc (Site) được Quản trị viên HRP xác nhận tọa độ GPS chuẩn (geoConfirmedAt). Thao tác Vào ca / Tan ca tạm khóa cho đến khi Admin xác nhận Site."
-    } else {
-        "Bạn có thể xem việc làm và nộp hồ sơ ứng tuyển ngay tại mục Việc làm. Chấm công GPS và Giới thiệu người làm chỉ mở khi tài khoản được Quản trị viên HRP liên kết hồ sơ Worker và phân công dự án ACTIVE. Tính năng Góp ý mở sau khi số điện thoại được xác minh OTP."
+    val subtitleText = when {
+        isSiteGpsLocked -> {
+            "Dự án ${profile.projectName.ifBlank { profile.factoryLocation.ifBlank { "hiện tại" } }} chưa có địa điểm làm việc (Site) được Quản trị viên HRP xác nhận tọa độ GPS chuẩn (geoConfirmedAt). Thao tác Vào ca / Tan ca tạm khóa cho đến khi Admin xác nhận Site."
+        }
+        profile.hasActiveAssignment -> {
+            "Hồ sơ công nhân đã có phân công dự án nhưng đang chờ Quản trị viên HRP hoàn tất kích hoạt trạng thái làm việc để mở chấm công GPS."
+        }
+        else -> {
+            "Bạn có thể xem việc làm và nộp hồ sơ ứng tuyển ngay tại mục Việc làm. Chấm công GPS và Giới thiệu người làm chỉ mở khi tài khoản được Quản trị viên HRP liên kết hồ sơ Worker và phân công dự án ACTIVE. Tính năng Góp ý mở sau khi số điện thoại được xác minh OTP."
+        }
     }
 
     Card(
@@ -258,22 +264,27 @@ private fun WorkerHeroCard(
     onOpenPhoneOtp: () -> Unit = {}
 ) {
     val canCheckIn = profile.canCheckIn
+    val hasActiveAssignment = profile.hasActiveAssignment
     val isSiteGpsReady = profile.hasConfiguredSiteGps && !profile.siteGeofenceNotConfigured
     val isActionEnabled = canCheckIn && isSiteGpsReady
+    val isWaitingSiteGps = hasActiveAssignment && !isSiteGpsReady
 
     val badgeBg = when {
         isActionEnabled -> HrpSuccess.copy(alpha = 0.2f)
-        canCheckIn && !isSiteGpsReady -> HrpError.copy(alpha = 0.2f)
+        isWaitingSiteGps -> HrpError.copy(alpha = 0.2f)
+        hasActiveAssignment && !canCheckIn -> HrpWarning.copy(alpha = 0.2f)
         else -> HrpWarning.copy(alpha = 0.2f)
     }
     val badgeColor = when {
         isActionEnabled -> HrpSuccess
-        canCheckIn && !isSiteGpsReady -> HrpError
+        isWaitingSiteGps -> HrpError
+        hasActiveAssignment && !canCheckIn -> HrpWarning
         else -> HrpWarning
     }
     val badgeLabel = when {
         isActionEnabled -> "ĐỦ ĐIỀU KIỆN"
-        canCheckIn && !isSiteGpsReady -> "CHỜ XÁC NHẬN SITE"
+        isWaitingSiteGps -> "CHỜ XÁC NHẬN SITE"
+        hasActiveAssignment && !canCheckIn -> "ĐÃ PHÂN CÔNG"
         else -> "CHƯA PHÂN CÔNG"
     }
 
@@ -473,10 +484,10 @@ private fun WorkerHeroCard(
                     }
                 }
             } else {
-                val lockReasonText = if (canCheckIn && !isSiteGpsReady) {
-                    "Tạm khóa chấm công: Site dự án chưa được Admin xác nhận tọa độ GPS"
-                } else {
-                    "Chấm công bị khóa: Tài khoản cần được Admin liên kết và có phân công ACTIVE"
+                val lockReasonText = when {
+                    isWaitingSiteGps -> "Tạm khóa chấm công: Site dự án chưa được Admin xác nhận tọa độ GPS"
+                    hasActiveAssignment && !canCheckIn -> "Tạm khóa chấm công: Hồ sơ đang chờ hoàn tất kích hoạt chấm công"
+                    else -> "Chấm công bị khóa: Tài khoản cần được Admin liên kết và có phân công ACTIVE"
                 }
                 Box(
                     modifier = Modifier
