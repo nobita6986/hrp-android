@@ -36,6 +36,7 @@ import com.example.data.model.PayslipSummary
 import com.example.data.model.PublicProject
 import com.example.data.model.ReferralItem
 import com.example.data.model.ReferralProgram
+import com.example.data.model.RewardAttendancePolicy
 import com.example.data.model.TicketItem
 import com.example.data.model.TicketType
 import com.example.data.model.UserRole
@@ -151,6 +152,8 @@ class HrpRepository(
                     hasActiveAssignment = cachedHasAssignment,
                     canCheckIn = cachedHasAssignment
                 )
+                _lastCheckInEpochMs.value = tm.getLastCheckInEpochMs()
+                _lastCheckOutEpochMs.value = tm.getLastCheckOutEpochMs()
             }
         }
     }
@@ -188,6 +191,12 @@ class HrpRepository(
 
     private val _attendanceList = MutableStateFlow<List<AttendanceDay>>(emptyList())
     val attendanceList: StateFlow<List<AttendanceDay>> = _attendanceList.asStateFlow()
+
+    private val _lastCheckInEpochMs = MutableStateFlow(tokenManager?.getLastCheckInEpochMs() ?: 0L)
+    val lastCheckInEpochMs: StateFlow<Long> = _lastCheckInEpochMs.asStateFlow()
+
+    private val _lastCheckOutEpochMs = MutableStateFlow(tokenManager?.getLastCheckOutEpochMs() ?: 0L)
+    val lastCheckOutEpochMs: StateFlow<Long> = _lastCheckOutEpochMs.asStateFlow()
 
     private val _payslip = MutableStateFlow(
         PayslipSummary(
@@ -550,6 +559,8 @@ class HrpRepository(
             canCheckIn = false
         )
         _attendanceList.value = emptyList()
+        _lastCheckInEpochMs.value = 0L
+        _lastCheckOutEpochMs.value = 0L
         _tickets.value = emptyList()
         _feedbackList.value = emptyList()
         _referralList.value = emptyList()
@@ -955,6 +966,16 @@ class HrpRepository(
             }
             return@withContext Result.failure(Exception(errorMsg))
         }
+        val gate = RewardAttendancePolicy.evaluateButtonGate(
+            attendanceList = _attendanceList.value,
+            cachedCheckInMs = _lastCheckInEpochMs.value,
+            cachedCheckOutMs = _lastCheckOutEpochMs.value
+        )
+        if (!gate.isCheckInEnabled) {
+            return@withContext Result.failure(
+                Exception(gate.statusHint ?: "Chưa đến thời điểm được phép bấm Vào Ca.")
+            )
+        }
         if (latitude == null || longitude == null) {
             return@withContext Result.failure(Exception("Yêu cầu định vị GPS thực tế từ thiết bị để chấm công."))
         }
@@ -965,7 +986,13 @@ class HrpRepository(
             accuracyMeters = accuracy ?: 15.0f
         )
         eventResult.map { eventData ->
+            val nowMs = System.currentTimeMillis()
             val today = HrpFormatters.todayDateIso()
+            val parsedInMs = RewardAttendancePolicy.parseDateAndTimeEpochMs(today, eventData.recordedAt) ?: nowMs
+            _lastCheckInEpochMs.value = parsedInMs
+            _lastCheckOutEpochMs.value = 0L
+            tokenManager?.saveCheckInOutTimestamps(checkInEpochMs = parsedInMs, checkOutEpochMs = 0L)
+
             _attendanceList.value.firstOrNull { it.dateString == today } ?: AttendanceDay(
                 id = eventData.attendanceId.ifBlank { UUID.randomUUID().toString() },
                 dateString = today,
@@ -973,12 +1000,12 @@ class HrpRepository(
                 shiftName = "Ca tiêu chuẩn",
                 checkInTime = eventData.recordedAt,
                 checkOutTime = null,
-                standardHours = 8.0,
+                standardHours = 0.0,
                 otHours = 0.0,
                 locationVerified = eventData.geofenceResult.equals("INSIDE", ignoreCase = true),
                 factorySite = site.ifBlank { _workerProfile.value.factoryLocation.ifBlank { "Nhà máy HRP" } },
                 status = AttendanceStatus.PENDING,
-                note = "Chấm công GPS",
+                note = "Đang trong ca (cần bấm Tan ca sau 6h–12h để được ghi nhận)",
                 geofenceResult = eventData.geofenceResult,
                 riskFlag = false
             )
@@ -1003,6 +1030,16 @@ class HrpRepository(
             }
             return@withContext Result.failure(Exception(errorMsg))
         }
+        val gate = RewardAttendancePolicy.evaluateButtonGate(
+            attendanceList = _attendanceList.value,
+            cachedCheckInMs = _lastCheckInEpochMs.value,
+            cachedCheckOutMs = _lastCheckOutEpochMs.value
+        )
+        if (!gate.isCheckOutEnabled) {
+            return@withContext Result.failure(
+                Exception(gate.statusHint ?: "Chưa đủ điều kiện bấm Tan Ca (khoảng cách Vào ca – Tan ca phải từ 6h đến 12h).")
+            )
+        }
         if (latitude == null || longitude == null) {
             return@withContext Result.failure(Exception("Yêu cầu định vị GPS thực tế từ thiết bị để kết thúc ca."))
         }
@@ -1013,7 +1050,12 @@ class HrpRepository(
             accuracyMeters = accuracy ?: 15.0f
         )
         eventResult.map { eventData ->
+            val nowMs = System.currentTimeMillis()
             val today = HrpFormatters.todayDateIso()
+            val parsedOutMs = RewardAttendancePolicy.parseDateAndTimeEpochMs(today, eventData.recordedAt) ?: nowMs
+            _lastCheckOutEpochMs.value = parsedOutMs
+            tokenManager?.saveCheckInOutTimestamps(checkOutEpochMs = parsedOutMs)
+
             _attendanceList.value.firstOrNull { it.dateString == today } ?: AttendanceDay(
                 id = eventData.attendanceId.ifBlank { UUID.randomUUID().toString() },
                 dateString = today,
@@ -1021,7 +1063,7 @@ class HrpRepository(
                 shiftName = "Ca tiêu chuẩn",
                 checkInTime = null,
                 checkOutTime = eventData.recordedAt,
-                standardHours = 8.0,
+                standardHours = 0.0,
                 otHours = 0.0,
                 locationVerified = eventData.geofenceResult.equals("INSIDE", ignoreCase = true),
                 factorySite = _workerProfile.value.factoryLocation.ifBlank { "Nhà máy HRP" },

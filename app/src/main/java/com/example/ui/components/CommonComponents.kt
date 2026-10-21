@@ -51,9 +51,9 @@ import com.example.ui.theme.HrpWarningContainer
 fun AttendanceStatusBadge(status: AttendanceStatus, modifier: Modifier = Modifier) {
     val (text, bgColor, textColor) = when (status) {
         AttendanceStatus.APPROVED -> Triple("Đã duyệt", HrpSuccessContainer, HrpSuccess)
-        AttendanceStatus.PENDING -> Triple("Chờ duyệt", HrpWarningContainer, HrpWarning)
+        AttendanceStatus.PENDING -> Triple("Đang trong ca", HrpWarningContainer, HrpWarning)
         AttendanceStatus.DISPUTED -> Triple("Khiếu nại", HrpErrorContainer, HrpError)
-        AttendanceStatus.ABSENT -> Triple("Vắng mặt", HrpErrorContainer, HrpError)
+        AttendanceStatus.ABSENT -> Triple("Không ghi nhận", HrpErrorContainer, HrpError)
     }
 
     Box(

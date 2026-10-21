@@ -1,7 +1,13 @@
 package com.example
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollTo
 import com.example.data.model.VerificationStatus
@@ -105,5 +111,64 @@ class SiteGpsCheckInUiTest {
             "Tài khoản cần được Admin liên kết hồ sơ công nhân",
             substring = true
         ).assertDoesNotExist()
+    }
+
+    @Test
+    fun `RewardAttendancePolicy 6h-12h-20h button states work accurately on HomeScreen`() {
+        val readyProfile = piaggioWaitingSiteGpsProfile.copy(
+            canCheckIn = true,
+            hasConfiguredSiteGps = true,
+            siteGeofenceNotConfigured = false
+        )
+        val checkInTimeMs = 1_760_000_000_000L
+        val hourMs = 60L * 60L * 1000L
+
+        var currentNowMs by androidx.compose.runtime.mutableLongStateOf(checkInTimeMs + 2L * hourMs)
+        var currentCheckOutMs by androidx.compose.runtime.mutableLongStateOf(0L)
+
+        composeTestRule.setContent {
+            HomeScreen(
+                workerProfile = readyProfile,
+                attendanceList = emptyList(),
+                tickets = emptyList(),
+                onNavigateTab = {},
+                onCheckIn = {},
+                onCheckOut = {},
+                onRequestAdvanceSalary = {},
+                onCreateTicket = {},
+                lastCheckInEpochMs = checkInTimeMs,
+                lastCheckOutEpochMs = currentCheckOutMs,
+                nowEpochMsOverride = currentNowMs
+            )
+        }
+
+        // 1. At +2h after check-in (< 6h): BOTH buttons disabled
+        composeTestRule.onNodeWithTag("button_check_in").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("button_check_out").assertIsNotEnabled()
+
+        // 2. At +7h after check-in (between 6h and 12h): Check-In disabled, Check-Out enabled
+        currentNowMs = checkInTimeMs + 7L * hourMs
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("button_check_in").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("button_check_out").assertIsEnabled()
+
+        // 3. At +13h after check-in WITHOUT check-out (> 12h): shift not recorded, BOTH buttons enabled
+        currentNowMs = checkInTimeMs + 13L * hourMs
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("button_check_in").assertIsEnabled()
+        composeTestRule.onNodeWithTag("button_check_out").assertIsEnabled()
+
+        // 4. When checked out validly at +8h, and now is +15h (< 20h): both buttons disabled
+        currentCheckOutMs = checkInTimeMs + 8L * hourMs
+        currentNowMs = checkInTimeMs + 15L * hourMs
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("button_check_in").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("button_check_out").assertIsNotEnabled()
+
+        // 5. At +20h since check-in: Check-In button re-enabled for next shift
+        currentNowMs = checkInTimeMs + 20L * hourMs
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("button_check_in").assertIsEnabled()
+        composeTestRule.onNodeWithTag("button_check_out").assertIsNotEnabled()
     }
 }

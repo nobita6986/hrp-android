@@ -36,12 +36,15 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -52,12 +55,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AttendanceDay
 import com.example.data.model.AttendanceStatus
+import com.example.data.model.CheckInGateState
+import com.example.data.model.RewardAttendancePolicy
 import com.example.data.model.TicketItem
 import com.example.data.model.TicketType
 import com.example.data.model.VerificationStatus
 import com.example.data.model.WorkerProfile
 import com.example.data.model.WorkerVerificationInfo
 import com.example.ui.components.HrpSectionHeader
+import kotlinx.coroutines.delay
 import com.example.ui.components.TicketStatusBadge
 import com.example.ui.theme.HrpBackground
 import com.example.ui.theme.HrpError
@@ -86,8 +92,30 @@ fun HomeScreen(
     onCreateTicket: (TicketType) -> Unit,
     onOpenPhoneOtp: () -> Unit = {},
     onOpenWorkerVerification: () -> Unit = {},
+    lastCheckInEpochMs: Long = 0L,
+    lastCheckOutEpochMs: Long = 0L,
+    nowEpochMsOverride: Long? = null,
     modifier: Modifier = Modifier
 ) {
+    var liveNowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(nowEpochMsOverride) {
+        if (nowEpochMsOverride == null) {
+            while (true) {
+                delay(30_000L)
+                liveNowMs = System.currentTimeMillis()
+            }
+        }
+    }
+    val effectiveNowMs = nowEpochMsOverride ?: liveNowMs
+    val gateState = remember(attendanceList, lastCheckInEpochMs, lastCheckOutEpochMs, effectiveNowMs) {
+        RewardAttendancePolicy.evaluateButtonGate(
+            attendanceList = attendanceList,
+            cachedCheckInMs = lastCheckInEpochMs,
+            cachedCheckOutMs = lastCheckOutEpochMs,
+            nowMs = effectiveNowMs
+        )
+    }
+
     val approvedDays = attendanceList.count { it.status == AttendanceStatus.APPROVED }.toDouble()
     val otHours = attendanceList.sumOf { it.otHours }
     val isSiteGpsLocked = workerProfile.hasActiveAssignment &&
@@ -106,6 +134,7 @@ fun HomeScreen(
         item {
             WorkerHeroCard(
                 profile = workerProfile,
+                gateState = gateState,
                 onCheckIn = onCheckIn,
                 onCheckOut = onCheckOut,
                 onOpenPhoneOtp = onOpenPhoneOtp
@@ -259,6 +288,7 @@ private fun MobileAccessStatusCard(
 @Composable
 private fun WorkerHeroCard(
     profile: WorkerProfile,
+    gateState: CheckInGateState,
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit,
     onOpenPhoneOtp: () -> Unit = {}
@@ -442,7 +472,7 @@ private fun WorkerHeroCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Check-in action bar (strictly gated by mobileAccess.canCheckIn && confirmed Site GPS)
+            // Check-in action bar (strictly gated by mobileAccess.canCheckIn && confirmed Site GPS && 6h-12h-20h rule)
             if (isActionEnabled) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -450,11 +480,18 @@ private fun WorkerHeroCard(
                 ) {
                     Button(
                         onClick = onCheckIn,
+                        enabled = gateState.isCheckInEnabled,
                         modifier = Modifier
                             .weight(1f)
+                            .alpha(if (gateState.isCheckInEnabled) 1f else 0.45f)
                             .testTag("button_check_in"),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = HrpPrimary,
+                            contentColor = Color.White,
+                            disabledContainerColor = HrpPrimary.copy(alpha = 0.35f),
+                            disabledContentColor = Color.White.copy(alpha = 0.6f)
+                        )
                     ) {
                         Icon(
                             imageVector = Icons.Default.AccessTime,
@@ -467,12 +504,20 @@ private fun WorkerHeroCard(
 
                     OutlinedButton(
                         onClick = onCheckOut,
+                        enabled = gateState.isCheckOutEnabled,
                         modifier = Modifier
                             .weight(1f)
+                            .alpha(if (gateState.isCheckOutEnabled) 1f else 0.45f)
                             .testTag("button_check_out"),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color.White,
+                            disabledContentColor = Color.White.copy(alpha = 0.5f)
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (gateState.isCheckOutEnabled) HrpSuccess else Color.White.copy(alpha = 0.25f)
+                        )
                     ) {
                         Icon(
                             imageVector = Icons.Default.AssignmentTurnedIn,
@@ -481,6 +526,24 @@ private fun WorkerHeroCard(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Tan Ca (GPS)", fontWeight = FontWeight.Bold)
+                    }
+                }
+                gateState.statusHint?.let { hint ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(HrpNavySurface)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .testTag("check_in_cycle_hint")
+                    ) {
+                        Text(
+                            text = hint,
+                            color = Color.White.copy(alpha = 0.88f),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
                     }
                 }
             } else {

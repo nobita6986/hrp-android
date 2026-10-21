@@ -96,6 +96,8 @@ class HrpViewModel(
     val verificationInfo: StateFlow<WorkerVerificationInfo?> = repository.verificationInfo
     val publicProjects: StateFlow<List<PublicProject>> = repository.publicProjects
     val attendanceList: StateFlow<List<AttendanceDay>> = repository.attendanceList
+    val lastCheckInEpochMs: StateFlow<Long> = repository.lastCheckInEpochMs
+    val lastCheckOutEpochMs: StateFlow<Long> = repository.lastCheckOutEpochMs
     val payslip: StateFlow<PayslipSummary> = repository.payslip
     val tickets: StateFlow<List<TicketItem>> = repository.tickets
     val feedbackList: StateFlow<List<FeedbackItem>> = repository.feedbackList

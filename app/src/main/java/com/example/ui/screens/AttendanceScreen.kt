@@ -32,23 +32,30 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AttendanceDay
 import com.example.data.model.AttendanceStatus
+import com.example.data.model.CheckInGateState
+import com.example.data.model.RewardAttendancePolicy
 import com.example.data.model.VerificationStatus
 import com.example.data.model.WorkerProfile
 import com.example.ui.components.AttendanceStatusBadge
 import com.example.ui.components.HrpSectionHeader
+import kotlinx.coroutines.delay
 import com.example.ui.theme.HrpBackground
 import com.example.ui.theme.HrpError
 import com.example.ui.theme.HrpNavyDark
@@ -69,9 +76,30 @@ fun AttendanceScreen(
     onCheckOut: () -> Unit,
     onDisputeAttendance: (AttendanceDay) -> Unit,
     onOpenWorkerVerification: () -> Unit = {},
+    lastCheckInEpochMs: Long = 0L,
+    lastCheckOutEpochMs: Long = 0L,
+    nowEpochMsOverride: Long? = null,
     modifier: Modifier = Modifier
 ) {
     var selectedFilter by remember { mutableStateOf<AttendanceStatus?>(null) }
+    var liveNowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(nowEpochMsOverride) {
+        if (nowEpochMsOverride == null) {
+            while (true) {
+                delay(30_000L)
+                liveNowMs = System.currentTimeMillis()
+            }
+        }
+    }
+    val effectiveNowMs = nowEpochMsOverride ?: liveNowMs
+    val gateState = remember(attendanceList, lastCheckInEpochMs, lastCheckOutEpochMs, effectiveNowMs) {
+        RewardAttendancePolicy.evaluateButtonGate(
+            attendanceList = attendanceList,
+            cachedCheckInMs = lastCheckInEpochMs,
+            cachedCheckOutMs = lastCheckOutEpochMs,
+            nowMs = effectiveNowMs
+        )
+    }
 
     val filteredList = if (selectedFilter == null) {
         attendanceList
@@ -85,6 +113,12 @@ fun AttendanceScreen(
     val isActionEnabled = canCheckIn && isSiteGpsReady
     val siteSubtitle = workerProfile?.factoryLocation?.takeIf { it.isNotBlank() }
         ?: "Chưa có dự án được phân công (ACTIVE)"
+    val totalStandardHours = remember(attendanceList) {
+        val rawSum = attendanceList
+            .filter { it.status == AttendanceStatus.APPROVED }
+            .sumOf { it.standardHours }
+        Math.round(rawSum * 10.0) / 10.0
+    }
 
     LazyColumn(
         modifier = modifier
@@ -102,8 +136,10 @@ fun AttendanceScreen(
                 canCheckIn = canCheckIn,
                 hasActiveAssignment = hasActiveAssignment,
                 isSiteGpsReady = isSiteGpsReady,
+                gateState = gateState,
                 totalDays = attendanceList.size,
                 approvedDays = attendanceList.count { it.status == AttendanceStatus.APPROVED },
+                totalStandardHours = totalStandardHours,
                 totalOtHours = attendanceList.sumOf { it.otHours },
                 onCheckIn = onCheckIn,
                 onCheckOut = onCheckOut
@@ -217,8 +253,10 @@ private fun AttendanceSummaryBanner(
     canCheckIn: Boolean,
     hasActiveAssignment: Boolean = false,
     isSiteGpsReady: Boolean,
+    gateState: CheckInGateState,
     totalDays: Int,
     approvedDays: Int,
+    totalStandardHours: Double,
     totalOtHours: Double,
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit
@@ -307,7 +345,7 @@ private fun AttendanceSummaryBanner(
                 }
                 Column {
                     Text("Giờ chuẩn", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
-                    Text("${approvedDays * 8.0}h", color = HrpSuccess, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("${totalStandardHours}h", color = HrpSuccess, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
                 Column {
                     Text("Tăng ca (OT)", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
@@ -324,9 +362,18 @@ private fun AttendanceSummaryBanner(
                 ) {
                     Button(
                         onClick = onCheckIn,
-                        modifier = Modifier.weight(1f),
+                        enabled = gateState.isCheckInEnabled,
+                        modifier = Modifier
+                            .weight(1f)
+                            .alpha(if (gateState.isCheckInEnabled) 1f else 0.45f)
+                            .testTag("attendance_button_check_in"),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = HrpPrimary,
+                            contentColor = Color.White,
+                            disabledContainerColor = HrpPrimary.copy(alpha = 0.35f),
+                            disabledContentColor = Color.White.copy(alpha = 0.6f)
+                        )
                     ) {
                         Icon(imageVector = Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
@@ -334,12 +381,40 @@ private fun AttendanceSummaryBanner(
                     }
                     OutlinedButton(
                         onClick = onCheckOut,
-                        modifier = Modifier.weight(1f),
+                        enabled = gateState.isCheckOutEnabled,
+                        modifier = Modifier
+                            .weight(1f)
+                            .alpha(if (gateState.isCheckOutEnabled) 1f else 0.45f)
+                            .testTag("attendance_button_check_out"),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.4f))
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color.White,
+                            disabledContentColor = Color.White.copy(alpha = 0.5f)
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (gateState.isCheckOutEnabled) HrpSuccess else Color.White.copy(alpha = 0.25f)
+                        )
                     ) {
                         Text("Tan Ca (GPS)", fontWeight = FontWeight.Bold)
+                    }
+                }
+                gateState.statusHint?.let { hint ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(HrpNavySurface)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .testTag("attendance_cycle_hint")
+                    ) {
+                        Text(
+                            text = hint,
+                            color = Color.White.copy(alpha = 0.88f),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
                     }
                 }
             } else {
@@ -453,10 +528,14 @@ private fun AttendanceCardItem(
                 Column {
                     Text("Giờ ra", style = MaterialTheme.typography.bodySmall.copy(color = HrpTextSecondary, fontSize = 11.sp))
                     Text(
-                        text = day.checkOutTime ?: "Đang làm",
+                        text = day.checkOutTime ?: if (day.status == AttendanceStatus.ABSENT) "Quá 12h (Hủy)" else "Đang làm",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            color = if (day.checkOutTime == null) HrpPrimary else HrpNavyDark
+                            color = when {
+                                day.checkOutTime != null -> HrpNavyDark
+                                day.status == AttendanceStatus.ABSENT -> HrpError
+                                else -> HrpPrimary
+                            }
                         )
                     )
                 }
@@ -464,7 +543,10 @@ private fun AttendanceCardItem(
                     Text("Công chuẩn", style = MaterialTheme.typography.bodySmall.copy(color = HrpTextSecondary, fontSize = 11.sp))
                     Text(
                         text = "${day.standardHours}h",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, color = HrpSuccess)
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = if (day.status == AttendanceStatus.APPROVED && day.standardHours > 0.0) HrpSuccess else HrpTextSecondary
+                        )
                     )
                 }
                 Column {

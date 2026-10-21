@@ -312,6 +312,34 @@ class HrpNetworkAndAuthTest {
         assertTrue(domain.locationVerified)
         assertEquals(8.0, domain.standardHours, 0.001)
         assertEquals(2.0, domain.otHours, 0.001)
+
+        // Same-time check-in/out (e.g. 14:49 -> 14:49) must NOT default to 8.0h and must NOT be APPROVED
+        val sameTimeDto = AttendanceDayResponse(
+            id = "att-same-time",
+            workDate = "2026-10-21",
+            checkInTime = "14:49",
+            checkOutTime = "14:49",
+            regularHours = null,
+            geofenceResult = "INSIDE",
+            status = "APPENDED"
+        )
+        val sameTimeDomain = sameTimeDto.toDomain()
+        assertEquals(0.0, sameTimeDomain.standardHours, 0.001)
+        assertEquals(AttendanceStatus.ABSENT, sameTimeDomain.status)
+
+        // Valid 7.5h reward shift (08:00 -> 15:30) computes 7.5h when regularHours is null
+        val sevenHalfDto = AttendanceDayResponse(
+            id = "att-7-5h",
+            workDate = "2026-10-21",
+            checkInTime = "08:00",
+            checkOutTime = "15:30",
+            regularHours = null,
+            geofenceResult = "INSIDE",
+            status = "APPENDED"
+        )
+        val sevenHalfDomain = sevenHalfDto.toDomain()
+        assertEquals(7.5, sevenHalfDomain.standardHours, 0.001)
+        assertEquals(AttendanceStatus.APPROVED, sevenHalfDomain.status)
     }
 
     @Test

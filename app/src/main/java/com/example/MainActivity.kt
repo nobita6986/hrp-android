@@ -124,6 +124,8 @@ fun HrpApp(
     val verificationInfo by viewModel.verificationInfo.collectAsState()
     val publicProjects by viewModel.publicProjects.collectAsState()
     val attendanceList by viewModel.attendanceList.collectAsState()
+    val lastCheckInEpochMs by viewModel.lastCheckInEpochMs.collectAsState()
+    val lastCheckOutEpochMs by viewModel.lastCheckOutEpochMs.collectAsState()
     val tickets by viewModel.tickets.collectAsState()
     val referralProgram by viewModel.referralProgram.collectAsState()
     val referralList by viewModel.referralList.collectAsState()
@@ -261,7 +263,9 @@ fun HrpApp(
                             onRequestAdvanceSalary = { viewModel.setAdvanceSalaryDialogVisible(true) },
                             onCreateTicket = { viewModel.setCreateTicketDialogVisible(true) },
                             onOpenPhoneOtp = { viewModel.setPhoneOtpDialogVisible(true) },
-                            onOpenWorkerVerification = { viewModel.setWorkerVerificationDialogVisible(true) }
+                            onOpenWorkerVerification = { viewModel.setWorkerVerificationDialogVisible(true) },
+                            lastCheckInEpochMs = lastCheckInEpochMs,
+                            lastCheckOutEpochMs = lastCheckOutEpochMs
                         )
                     }
 
@@ -283,7 +287,9 @@ fun HrpApp(
                             onCheckIn = { performGpsCheckIn() },
                             onCheckOut = { performGpsCheckOut() },
                             onDisputeAttendance = { viewModel.setCreateTicketDialogVisible(true) },
-                            onOpenWorkerVerification = { viewModel.setWorkerVerificationDialogVisible(true) }
+                            onOpenWorkerVerification = { viewModel.setWorkerVerificationDialogVisible(true) },
+                            lastCheckInEpochMs = lastCheckInEpochMs,
+                            lastCheckOutEpochMs = lastCheckOutEpochMs
                         )
                     }
 

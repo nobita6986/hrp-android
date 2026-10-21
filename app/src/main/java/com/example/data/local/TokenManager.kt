@@ -30,6 +30,8 @@ open class TokenManager(private val context: Context) {
         private const val SP_KEY_PHONE_VERIFIED = "cached_phone_verified"
         private const val SP_KEY_VERIFICATION_STATUS = "cached_verification_status"
         private const val SP_KEY_HAS_ASSIGNMENT = "cached_has_assignment"
+        private const val SP_KEY_LAST_CHECK_IN_MS = "cached_last_check_in_ms"
+        private const val SP_KEY_LAST_CHECK_OUT_MS = "cached_last_check_out_ms"
 
         val PREF_TOKEN = stringPreferencesKey("jwt_token")
         val PREF_ROLE = stringPreferencesKey("user_role")
@@ -101,6 +103,25 @@ open class TokenManager(private val context: Context) {
 
     open fun hasActiveAssignment(): Boolean {
         return sharedPrefs.getBoolean(SP_KEY_HAS_ASSIGNMENT, false)
+    }
+
+    open fun getLastCheckInEpochMs(): Long {
+        return sharedPrefs.getLong(SP_KEY_LAST_CHECK_IN_MS, 0L)
+    }
+
+    open fun getLastCheckOutEpochMs(): Long {
+        return sharedPrefs.getLong(SP_KEY_LAST_CHECK_OUT_MS, 0L)
+    }
+
+    open fun saveCheckInOutTimestamps(checkInEpochMs: Long? = null, checkOutEpochMs: Long? = null) {
+        val editor = sharedPrefs.edit()
+        if (checkInEpochMs != null) {
+            editor.putLong(SP_KEY_LAST_CHECK_IN_MS, checkInEpochMs)
+        }
+        if (checkOutEpochMs != null) {
+            editor.putLong(SP_KEY_LAST_CHECK_OUT_MS, checkOutEpochMs)
+        }
+        editor.apply()
     }
 
     open fun isLoggedIn(): Boolean {

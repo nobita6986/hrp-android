@@ -11,6 +11,7 @@ import com.example.data.model.PayslipSummary
 import com.example.data.model.PublicProject
 import com.example.data.model.ReferralItem
 import com.example.data.model.ReferralProgram
+import com.example.data.model.RewardAttendancePolicy
 import com.example.data.model.TicketItem
 import com.example.data.model.TicketStatus
 import com.example.data.model.TicketType
@@ -882,7 +883,7 @@ data class AttendanceDayResponse(
     @param:Json(name = "checkInTime") val checkInTime: String? = null,
     @param:Json(name = "checkOutTime") val checkOutTime: String? = null,
     @param:Json(name = "regularHours") val regularHours: Double? = null,
-    @param:Json(name = "standardHours") val standardHours: Double? = 8.0,
+    @param:Json(name = "standardHours") val standardHours: Double? = null,
     @param:Json(name = "otHours") val otHours: Double? = 0.0,
     @param:Json(name = "source") val source: String? = "GPS",
     @param:Json(name = "geofenceResult") val geofenceResult: String? = null,
@@ -892,7 +893,7 @@ data class AttendanceDayResponse(
     @param:Json(name = "status") val status: String? = null,
     @param:Json(name = "note") val note: String? = ""
 ) {
-    fun toDomain(): AttendanceDay {
+    fun toDomain(nowMs: Long = System.currentTimeMillis()): AttendanceDay {
         val rawDate = workDate ?: dateString ?: ""
         val resolvedDate = if (rawDate.length >= 10 && rawDate[4] == '-' && rawDate[7] == '-') {
             rawDate.take(10)
@@ -900,20 +901,44 @@ data class AttendanceDayResponse(
             rawDate
         }
         val isInsideGeofence = locationVerified ?: (geofenceResult.equals("INSIDE", ignoreCase = true))
+        val hasCheckIn = !checkInTime.isNullOrBlank()
+        val hasCheckOut = !checkOutTime.isNullOrBlank()
+
+        val calculatedHours = RewardAttendancePolicy.calculateShiftHours(
+            workDate = resolvedDate,
+            checkInTime = checkInTime,
+            checkOutTime = checkOutTime
+        )
+        val checkInEpochMs = RewardAttendancePolicy.parseDateAndTimeEpochMs(resolvedDate, checkInTime)
+        val isExpiredUnclosed = hasCheckIn && !hasCheckOut &&
+            checkInEpochMs != null && (nowMs - checkInEpochMs) > RewardAttendancePolicy.MAX_CHECKOUT_DELAY_MS
+
+        val isValidShiftDuration = RewardAttendancePolicy.isValidRewardShiftDuration(calculatedHours)
+        val resolvedStandardHours = when {
+            !hasCheckIn || !hasCheckOut -> 0.0
+            !isValidShiftDuration -> 0.0
+            regularHours != null && regularHours in RewardAttendancePolicy.MIN_SHIFT_HOURS..RewardAttendancePolicy.MAX_SHIFT_HOURS -> regularHours
+            standardHours != null && standardHours in RewardAttendancePolicy.MIN_SHIFT_HOURS..RewardAttendancePolicy.MAX_SHIFT_HOURS -> standardHours
+            else -> calculatedHours ?: 0.0
+        }
+
         val domainStatus = when {
-            status != null -> when (status.uppercase()) {
-                "APPROVED", "APPENDED" -> if (riskFlag || geofenceResult.equals("OUTSIDE", ignoreCase = true)) {
-                    AttendanceStatus.DISPUTED
-                } else {
-                    AttendanceStatus.APPROVED
-                }
-                "DISPUTED", "REJECTED" -> AttendanceStatus.DISPUTED
-                "ABSENT" -> AttendanceStatus.ABSENT
-                else -> AttendanceStatus.PENDING
-            }
+            status?.uppercase() in listOf("DISPUTED", "REJECTED") -> AttendanceStatus.DISPUTED
+            status?.uppercase() == "ABSENT" -> AttendanceStatus.ABSENT
             riskFlag || geofenceResult.equals("OUTSIDE", ignoreCase = true) -> AttendanceStatus.DISPUTED
-            checkInTime != null && isInsideGeofence -> AttendanceStatus.APPROVED
+            isExpiredUnclosed -> AttendanceStatus.ABSENT
+            hasCheckIn && !hasCheckOut -> AttendanceStatus.PENDING
+            hasCheckIn && hasCheckOut && !isValidShiftDuration -> AttendanceStatus.ABSENT
+            hasCheckIn && hasCheckOut && isValidShiftDuration && isInsideGeofence -> AttendanceStatus.APPROVED
             else -> AttendanceStatus.PENDING
+        }
+
+        val resolvedNote = when {
+            !note.isNullOrBlank() -> note
+            isExpiredUnclosed -> "Quá 12h không bấm Tan ca — ca làm không được ghi nhận"
+            hasCheckIn && hasCheckOut && !isValidShiftDuration ->
+                "Ca làm không được ghi nhận (thời gian giữa Vào ca và Tan ca phải từ 6h đến 12h)"
+            else -> ""
         }
 
         return AttendanceDay(
@@ -923,12 +948,12 @@ data class AttendanceDayResponse(
             shiftName = shift?.takeIf { it.isNotBlank() } ?: shiftName?.takeIf { it.isNotBlank() } ?: "Ca tiêu chuẩn",
             checkInTime = checkInTime,
             checkOutTime = checkOutTime,
-            standardHours = regularHours ?: standardHours ?: 8.0,
-            otHours = otHours ?: 0.0,
+            standardHours = resolvedStandardHours,
+            otHours = if (domainStatus == AttendanceStatus.APPROVED) (otHours ?: 0.0) else 0.0,
             locationVerified = isInsideGeofence,
             factorySite = factorySite?.takeIf { it.isNotBlank() } ?: "Nhà máy HRP",
             status = domainStatus,
-            note = note.orEmpty(),
+            note = resolvedNote,
             geofenceResult = geofenceResult,
             riskFlag = riskFlag
         )
