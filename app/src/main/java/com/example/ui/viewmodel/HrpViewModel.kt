@@ -83,6 +83,9 @@ class HrpViewModel(
     private val _isSubmittingReferral = MutableStateFlow(false)
     val isSubmittingReferral: StateFlow<Boolean> = _isSubmittingReferral.asStateFlow()
 
+    private val _isSubmittingApplication = MutableStateFlow(false)
+    val isSubmittingApplication: StateFlow<Boolean> = _isSubmittingApplication.asStateFlow()
+
     // Last recorded GPS check-in info
     private val _lastGpsCheckIn = MutableStateFlow<GpsLocationResult?>(null)
     val lastGpsCheckIn: StateFlow<GpsLocationResult?> = _lastGpsCheckIn.asStateFlow()
@@ -562,16 +565,19 @@ class HrpViewModel(
         phone: String,
         consent: Boolean = true
     ) {
+        if (_isSubmittingApplication.value) return
         val currentJob = _showApplyJobDialog.value
         val slug = currentJob?.slug?.takeIf { it.isNotBlank() } ?: jobSlugOrTitle
 
         viewModelScope.launch {
+            _isSubmittingApplication.value = true
             val result = repository.applyToJob(
                 slug = slug,
                 fullName = candidateName.trim(),
                 phone = phone.trim(),
                 consent = consent
             )
+            _isSubmittingApplication.value = false
             _showApplyJobDialog.value = null
             result.onSuccess { resp ->
                 val trackingInfo = resp.trackingCode?.let { " (Mã hồ sơ: $it)" } ?: ""

@@ -799,6 +799,9 @@ class HrpRepository(
         }
     }
 
+    private var pendingApplySignature: String? = null
+    private var pendingApplyIdempotencyKey: String? = null
+
     /**
      * Endpoint 9: POST /api/public/jobs/{slug}/applications (Root JSON { trackingCode, status })
      * Sends Idempotency-Key via HTTP Header per contract Section 6.2 & 14.3.B.
@@ -815,11 +818,32 @@ class HrpRepository(
     ): Result<JobApplicationResponse> = withContext(Dispatchers.IO) {
         try {
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
-            val idempotencyKey = UUID.randomUUID().toString()
             val isAuthenticated = tokenManager?.isLoggedIn() == true
+            val resolvedName = if (isAuthenticated) null else fullName?.takeIf { it.isNotBlank() }
+            val resolvedPhone = if (isAuthenticated) null else phone?.takeIf { it.isNotBlank() }
+            val signature = listOf(
+                slug.trim(),
+                isAuthenticated.toString(),
+                resolvedName.orEmpty(),
+                resolvedPhone.orEmpty(),
+                experience.orEmpty(),
+                dateOfBirth.orEmpty(),
+                gender.orEmpty(),
+                consent.toString()
+            ).joinToString("|")
+
+            val idempotencyKey = if (pendingApplySignature == signature && !pendingApplyIdempotencyKey.isNullOrBlank()) {
+                pendingApplyIdempotencyKey!!
+            } else {
+                UUID.randomUUID().toString().also {
+                    pendingApplySignature = signature
+                    pendingApplyIdempotencyKey = it
+                }
+            }
+
             val req = JobApplicationRequest(
-                fullName = if (isAuthenticated) null else fullName?.takeIf { it.isNotBlank() },
-                phone = if (isAuthenticated) null else phone?.takeIf { it.isNotBlank() },
+                fullName = resolvedName,
+                phone = resolvedPhone,
                 experience = experience,
                 dateOfBirth = dateOfBirth,
                 gender = gender,
@@ -830,9 +854,18 @@ class HrpRepository(
                 idempotencyKey = idempotencyKey,
                 req = req
             )
+            pendingApplySignature = null
+            pendingApplyIdempotencyKey = null
             Result.success(response)
         } catch (t: Throwable) {
-            Result.failure(ApiErrorParser.parseThrowable(t, "Nộp hồ sơ ứng tuyển thất bại"))
+            val parsed = ApiErrorParser.parseThrowable(t, "Nộp hồ sơ ứng tuyển thất bại")
+            if (parsed.code.equals("IDEMPOTENCY_PAYLOAD_MISMATCH", ignoreCase = true) ||
+                parsed.code.equals("IDEMPOTENCY_CONFLICT", ignoreCase = true)
+            ) {
+                pendingApplySignature = null
+                pendingApplyIdempotencyKey = null
+            }
+            Result.failure(parsed)
         }
     }
 

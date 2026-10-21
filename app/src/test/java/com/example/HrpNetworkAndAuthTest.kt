@@ -705,6 +705,57 @@ class HrpNetworkAndAuthTest {
             assertFalse(tokenManager.isPhoneVerified())
         }
     }
+
+    @Test
+    fun `applyToJob translates raw POSSIBLE_MATCH_NOT_RESOLVED code and reuses Idempotency-Key on retry`() {
+        val capturedIdempotencyKeys = mutableListOf<String>()
+        var httpStatus = 409
+        var errorBodyJson = """{"error":"POSSIBLE_MATCH_NOT_RESOLVED","message":"POSSIBLE_MATCH_NOT_RESOLVED"}"""
+
+        val fakeApi = java.lang.reflect.Proxy.newProxyInstance(
+            com.example.data.api.HrpApiService::class.java.classLoader,
+            arrayOf(com.example.data.api.HrpApiService::class.java)
+        ) { _, method, args ->
+            when (method.name) {
+                "applyPublicJob" -> {
+                    capturedIdempotencyKeys.add(args[1] as String)
+                    val body = okhttp3.ResponseBody.create(null, errorBodyJson)
+                    throw retrofit2.HttpException(retrofit2.Response.error<Any>(httpStatus, body))
+                }
+                else -> throw UnsupportedOperationException("Unexpected API call: ${method.name}")
+            }
+        } as com.example.data.api.HrpApiService
+
+        val tokenManager = TokenManager(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        val repo = com.example.data.repository.HrpRepository(apiService = fakeApi, tokenManager = tokenManager)
+
+        kotlinx.coroutines.runBlocking {
+            tokenManager.saveUserSession(
+                token = "jwt_worker_session",
+                phone = "0987654321",
+                role = "WORKER",
+                fullName = "Nguyễn Văn A"
+            )
+
+            val res1 = repo.applyToJob(slug = "cty-piaggio-binh-xuyen-1")
+            assertTrue(res1.isFailure)
+            val err1 = res1.exceptionOrNull() as com.example.data.api.model.HrpApiException
+            assertEquals("POSSIBLE_MATCH_NOT_RESOLVED", err1.code)
+            assertFalse(err1.message.contains("POSSIBLE_MATCH_NOT_RESOLVED"))
+            assertTrue(err1.message.contains("đối soát"))
+
+            // Retrying the exact same job application reuses the same Idempotency-Key
+            httpStatus = 429
+            errorBodyJson = """{"error":"RATE_LIMITED","message":"Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút."}"""
+            val res2 = repo.applyToJob(slug = "cty-piaggio-binh-xuyen-1")
+            assertTrue(res2.isFailure)
+            val err2 = res2.exceptionOrNull() as com.example.data.api.model.HrpApiException
+            assertEquals("RATE_LIMITED", err2.code)
+            assertEquals("Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.", err2.message)
+            assertEquals(2, capturedIdempotencyKeys.size)
+            assertEquals(capturedIdempotencyKeys[0], capturedIdempotencyKeys[1])
+        }
+    }
 }
 
 

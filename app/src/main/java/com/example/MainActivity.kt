@@ -148,6 +148,7 @@ fun HrpApp(
     val showWorkerVerificationDialog by viewModel.showWorkerVerificationDialog.collectAsState()
     val isSubmittingVerification by viewModel.isSubmittingVerification.collectAsState()
     val isSubmittingReferral by viewModel.isSubmittingReferral.collectAsState()
+    val isSubmittingApplication by viewModel.isSubmittingApplication.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var pendingGpsAction by remember { mutableStateOf("CHECK_IN") }
@@ -384,6 +385,7 @@ fun HrpApp(
             defaultPhone = workerProfile.phone,
             isAuthenticated = true,
             phoneVerified = workerProfile.phoneVerified,
+            isSubmitting = isSubmittingApplication,
             onSubmit = { name, phone ->
                 viewModel.submitApplication(job.slug, name, phone)
             },

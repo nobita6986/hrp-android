@@ -238,6 +238,7 @@ fun ApplyJobModal(
     defaultPhone: String = "",
     isAuthenticated: Boolean = true,
     phoneVerified: Boolean = false,
+    isSubmitting: Boolean = false,
     onSubmit: (candidateName: String, phone: String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -245,7 +246,7 @@ fun ApplyJobModal(
     var phone by remember(defaultPhone) { mutableStateOf(defaultPhone) }
     var consentChecked by remember { mutableStateOf(true) }
 
-    val canSubmit = if (isAuthenticated) {
+    val canSubmit = !isSubmitting && if (isAuthenticated) {
         consentChecked
     } else {
         candidateName.isNotBlank() && phone.isNotBlank() && consentChecked
@@ -397,11 +398,21 @@ fun ApplyJobModal(
                 colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary),
                 modifier = Modifier.testTag("apply_job_confirm_button")
             ) {
-                Text("Xác Nhận Ứng Tuyển", fontWeight = FontWeight.Bold)
+                if (isSubmitting) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Đang gửi...", fontWeight = FontWeight.Bold)
+                } else {
+                    Text("Xác Nhận Ứng Tuyển", fontWeight = FontWeight.Bold)
+                }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
                 Text("Đóng", color = HrpTextSecondary)
             }
         }

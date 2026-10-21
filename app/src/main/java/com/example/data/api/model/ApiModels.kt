@@ -60,6 +60,7 @@ class HrpApiException(
  * Utility to parse Retrofit HttpException or envelope errors into standardized HrpApiException
  */
 object ApiErrorParser {
+    private val RAW_ERROR_CODE_REGEX = Regex("^[A-Z0-9_]+$")
 
     fun fromApiError(error: ApiError?, httpCode: Int = 400, fallbackMessage: String = "Yêu cầu không thành công"): HrpApiException {
         val code = error?.code ?: mapHttpCodeToDefaultErrorCode(httpCode)
@@ -94,7 +95,7 @@ object ApiErrorParser {
                     }
                     // Fallback for legacy root JSON errors: { "error": "...", "message": "...", "code": "..." }
                     val topCode = root.optString("code", "").ifBlank {
-                        root.optString("error", "").takeIf { it.all { ch -> ch.isUpperCase() || ch == '_' } }
+                        root.optString("error", "").takeIf { it.all { ch -> ch.isUpperCase() || ch.isDigit() || ch == '_' } }
                             ?: mapHttpCodeToDefaultErrorCode(httpCode)
                     }
                     val topMsg = root.optString("message", "").ifBlank { root.optString("error", "") }.takeIf { it.isNotBlank() }
@@ -136,40 +137,62 @@ object ApiErrorParser {
     }
 
     fun translateErrorCode(code: String, serverMessage: String?, fallback: String): String {
+        val cleanMessage = serverMessage
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() && !it.equals(code, ignoreCase = true) && !RAW_ERROR_CODE_REGEX.matches(it) }
+
         return when (code.uppercase()) {
-            "UNAUTHORIZED" -> serverMessage ?: "Phiên đăng nhập đã hết hạn hoặc thông tin xác thực không hợp lệ."
+            "UNAUTHORIZED" -> cleanMessage ?: "Phiên đăng nhập đã hết hạn hoặc thông tin xác thực không hợp lệ."
             "PHONE_ALREADY_REGISTERED" ->
-                serverMessage ?: "Không thể tạo tài khoản với thông tin này. Nếu đã có tài khoản, vui lòng đăng nhập."
+                cleanMessage ?: "Không thể tạo tài khoản với thông tin này. Nếu đã có tài khoản, vui lòng đăng nhập."
             "REGISTRATION_UNAVAILABLE" ->
-                serverMessage ?: "Dịch vụ đăng ký tạm thời gián đoạn. Vui lòng thử lại sau."
+                cleanMessage ?: "Dịch vụ đăng ký tạm thời gián đoạn. Vui lòng thử lại sau."
             "PROFILE_INCOMPLETE" ->
-                serverMessage ?: "Tài khoản chưa đủ họ tên và số điện thoại hợp lệ để ứng tuyển."
-            "VALIDATION_ERROR" ->
-                serverMessage ?: "Thông tin nhập vào chưa hợp lệ. Vui lòng kiểm tra lại."
+                cleanMessage ?: "Tài khoản chưa đủ họ tên và số điện thoại hợp lệ để ứng tuyển."
+            "VALIDATION_ERROR", "VALIDATION", "INVALID_INPUT" ->
+                cleanMessage ?: "Thông tin nhập vào chưa hợp lệ. Vui lòng kiểm tra lại."
             "FORBIDDEN_NOT_VERIFIED", "FORBIDDEN", "NOT_A_WORKER" ->
-                serverMessage ?: "Tài khoản chưa được Quản trị viên liên kết với hồ sơ Người lao động và phân công dự án (ACTIVE)."
+                cleanMessage ?: "Tài khoản chưa được Quản trị viên liên kết với hồ sơ Người lao động và phân công dự án (ACTIVE)."
             "WORKER_PROFILE_NOT_FOUND", "WORKER_NOT_FOUND" ->
-                serverMessage ?: "Tài khoản chưa được Quản trị viên liên kết với hồ sơ Người lao động."
+                cleanMessage ?: "Tài khoản chưa được Quản trị viên liên kết với hồ sơ Người lao động."
             "PHONE_NOT_VERIFIED" ->
-                serverMessage ?: "Cần xác thực số điện thoại bằng mã OTP trước khi sử dụng tính năng Góp ý."
+                cleanMessage ?: "Cần xác thực số điện thoại bằng mã OTP trước khi sử dụng tính năng Góp ý."
             "OTP_SERVICE_UNAVAILABLE" ->
-                serverMessage ?: "Hệ thống gửi mã OTP đang bảo trì, vui lòng thử lại sau."
+                cleanMessage ?: "Hệ thống gửi mã OTP đang bảo trì, vui lòng thử lại sau."
             "OTP_INVALID_OR_EXPIRED" ->
-                serverMessage ?: "Mã OTP không chính xác hoặc đã hết hạn."
-            "WORKER_VERIFICATION_PENDING" -> serverMessage ?: "Bạn đang có một hồ sơ xác thực chờ HR xét duyệt, không thể gửi trùng."
-            "REFERRAL_PROGRAM_DISABLED" -> serverMessage ?: "Chương trình giới thiệu người làm hiện chưa mở hoặc đã hết hiệu lực."
-            "REFERRAL_CONSENT_REQUIRED" -> serverMessage ?: "Vui lòng xác nhận người được giới thiệu đã đồng ý chia sẻ thông tin."
-            "GEOFENCE_OUT_OF_RANGE" -> serverMessage ?: "Vị trí GPS của bạn nằm ngoài bán kính khu vực nhà máy/dự án được phân công."
-            "GPS_ACCURACY_TOO_LOW" -> serverMessage ?: "Tín hiệu GPS quá yếu (sai số lớn). Vui lòng di chuyển ra khu vực thoáng và thử lại."
+                cleanMessage ?: "Mã OTP không chính xác hoặc đã hết hạn."
+            "WORKER_VERIFICATION_PENDING" -> cleanMessage ?: "Bạn đang có một hồ sơ xác thực chờ HR xét duyệt, không thể gửi trùng."
+            "REFERRAL_PROGRAM_DISABLED" -> cleanMessage ?: "Chương trình giới thiệu người làm hiện chưa mở hoặc đã hết hiệu lực."
+            "REFERRAL_CONSENT_REQUIRED" -> cleanMessage ?: "Vui lòng xác nhận người được giới thiệu đã đồng ý chia sẻ thông tin."
+            "GEOFENCE_OUT_OF_RANGE" -> cleanMessage ?: "Vị trí GPS của bạn nằm ngoài bán kính khu vực nhà máy/dự án được phân công."
+            "GPS_ACCURACY_TOO_LOW" -> cleanMessage ?: "Tín hiệu GPS quá yếu (sai số lớn). Vui lòng di chuyển ra khu vực thoáng và thử lại."
             "SITE_GEOFENCE_NOT_CONFIGURED" ->
-                serverMessage ?: "Địa điểm dự án (Site) chưa được Quản trị viên HRP xác nhận tọa độ & bán kính chấm công GPS."
-            "CHECK_IN_REQUIRED" -> serverMessage ?: "Cần ghi nhận Vào ca trước khi thực hiện Tan ca."
-            "ATTENDANCE_ACTION_ALREADY_RECORDED" -> serverMessage ?: "Thao tác chấm công này đã được ghi nhận trong ngày hôm nay."
-            "IDEMPOTENCY_REQUIRED", "IDEMPOTENCY_CONFLICT" ->
-                serverMessage ?: "Yêu cầu đang được xử lý hoặc bị trùng lặp. Vui lòng thử lại."
-            "RATE_LIMIT_EXCEEDED" ->
-                serverMessage ?: "Bạn thao tác quá nhanh hoặc đã vượt giới hạn gửi/nhập mã. Vui lòng đợi ít phút trước khi thử lại."
-            else -> serverMessage ?: fallback
+                cleanMessage ?: "Địa điểm dự án (Site) chưa được Quản trị viên HRP xác nhận tọa độ & bán kính chấm công GPS."
+            "CHECK_IN_REQUIRED" -> cleanMessage ?: "Cần ghi nhận Vào ca trước khi thực hiện Tan ca."
+            "ATTENDANCE_ACTION_ALREADY_RECORDED" -> cleanMessage ?: "Thao tác chấm công này đã được ghi nhận trong ngày hôm nay."
+            "IDEMPOTENCY_REQUIRED", "IDEMPOTENCY_CONFLICT", "IDEMPOTENCY_KEY_REQUIRED" ->
+                cleanMessage ?: "Yêu cầu đang được xử lý hoặc bị trùng lặp. Vui lòng thử lại."
+            "IDEMPOTENCY_PAYLOAD_MISMATCH" ->
+                cleanMessage ?: "Thông tin ứng tuyển đã thay đổi so với lần gửi trước, vui lòng gửi lại."
+            "DUPLICATE_APPLICATION" ->
+                cleanMessage ?: "Bạn đã ứng tuyển vị trí này rồi. Hãy dùng mã tra cứu để xem trạng thái."
+            "JOB_NOT_AVAILABLE" ->
+                cleanMessage ?: "Vị trí này hiện không còn nhận hồ sơ."
+            "CONSENT_REQUIRED" ->
+                cleanMessage ?: "Vui lòng đồng ý cho phép xử lý thông tin trước khi gửi."
+            "POSSIBLE_MATCH_NOT_RESOLVED" ->
+                cleanMessage ?: "Thông tin họ tên hoặc số điện thoại chưa khớp với hồ sơ ứng viên sẵn có trên hệ thống (cần bộ phận Tuyển dụng HRP đối soát)."
+            "CV_UPLOAD_DISABLED", "CV_MIME_NOT_ALLOWED", "CV_TOO_LARGE", "CV_METADATA_INCOMPLETE" ->
+                cleanMessage ?: "Tính năng tải CV hiện đang tắt. Vui lòng gửi hồ sơ không kèm CV."
+            "APPLY_ENDPOINT_RETIRED", "ENDPOINT_RETIRED" ->
+                cleanMessage ?: "Không thể gửi đơn trên luồng cũ, vui lòng thử lại."
+            "PAYLOAD_TOO_LARGE" ->
+                cleanMessage ?: "Dữ liệu gửi lên quá lớn. Vui lòng rút ngắn thông tin."
+            "RATE_LIMIT_EXCEEDED", "RATE_LIMITED" ->
+                cleanMessage ?: "Bạn thao tác quá nhanh hoặc đã vượt giới hạn gửi. Vui lòng đợi ít phút trước khi thử lại."
+            "RATE_LIMIT_UNAVAILABLE" ->
+                cleanMessage ?: "Hệ thống đang tạm thời quá tải. Vui lòng thử lại sau ít phút."
+            else -> cleanMessage ?: fallback
         }
     }
 }
