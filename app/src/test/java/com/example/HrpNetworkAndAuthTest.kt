@@ -863,6 +863,118 @@ class HrpNetworkAndAuthTest {
             )
         }
     }
+
+    @Test
+    fun `sendPhoneOtp handles sent=false and phoneVerified=true by updating profile and tokenManager immediately`() {
+        val fakeApi = java.lang.reflect.Proxy.newProxyInstance(
+            com.example.data.api.HrpApiService::class.java.classLoader,
+            arrayOf(com.example.data.api.HrpApiService::class.java)
+        ) { _, method, _ ->
+            when (method.name) {
+                "register" -> com.example.data.api.model.ApiResponse(
+                    ok = true,
+                    data = com.example.data.api.model.RegisterData(
+                        userId = "usr-admin-verified-01",
+                        phone = "0987654321",
+                        fullName = "Duc Nguyen",
+                        role = "WORKER",
+                        phoneVerified = false,
+                        token = "jwt_admin_verified_session"
+                    )
+                )
+                "sendPhoneOtp" -> com.example.data.api.model.ApiResponse(
+                    ok = true,
+                    data = com.example.data.api.model.OtpSendData(
+                        sent = false,
+                        phoneVerified = true,
+                        cooldownSeconds = 0
+                    )
+                )
+                else -> throw UnsupportedOperationException("Unexpected API call: ${method.name}")
+            }
+        } as com.example.data.api.HrpApiService
+
+        val tokenManager = TokenManager(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        val repo = com.example.data.repository.HrpRepository(apiService = fakeApi, tokenManager = tokenManager)
+
+        kotlinx.coroutines.runBlocking {
+            tokenManager.clearToken()
+            repo.register("0987654321", "password123", "Duc Nguyen")
+            assertFalse(repo.workerProfile.value.phoneVerified)
+            assertFalse(tokenManager.isPhoneVerified())
+
+            val sendResult = repo.sendPhoneOtp("0987654321")
+            assertTrue(sendResult.isSuccess)
+            val data = sendResult.getOrNull()
+            assertNotNull(data)
+            assertFalse(data!!.sent)
+            assertTrue(data.phoneVerified)
+            assertTrue(repo.workerProfile.value.phoneVerified)
+            assertTrue(tokenManager.isPhoneVerified())
+        }
+    }
+
+    @Test
+    fun `unauthenticated guest can fetch public jobs and apply with fullName and phone`() {
+        var capturedApplyReq: com.example.data.api.model.JobApplicationRequest? = null
+        var capturedSlug: String? = null
+
+        val fakeApi = java.lang.reflect.Proxy.newProxyInstance(
+            com.example.data.api.HrpApiService::class.java.classLoader,
+            arrayOf(com.example.data.api.HrpApiService::class.java)
+        ) { _, method, args ->
+            when (method.name) {
+                "getPublicJobs" -> com.example.data.api.model.JobsRootResponse(
+                    jobs = listOf(
+                        JobOpeningResponse(
+                            id = "job-guest-1",
+                            slug = "cty-piaggio-binh-xuyen-1",
+                            title = "Công Nhân Lắp Ráp Piaggio",
+                            companyName = "CTY- PIAGGIO",
+                            location = "KCN Bình Xuyên 1",
+                            salaryDisplay = "10 - 15 Triệu"
+                        )
+                    ),
+                    total = 1
+                )
+                "applyPublicJob" -> {
+                    capturedSlug = args[0] as String
+                    capturedApplyReq = args[2] as com.example.data.api.model.JobApplicationRequest
+                    com.example.data.api.model.JobApplicationResponse(
+                        trackingCode = "APP-GUEST-99",
+                        status = "NEW"
+                    )
+                }
+                else -> throw UnsupportedOperationException("Unexpected API call: ${method.name}")
+            }
+        } as com.example.data.api.HrpApiService
+
+        val tokenManager = TokenManager(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        val repo = com.example.data.repository.HrpRepository(apiService = fakeApi, tokenManager = tokenManager)
+
+        kotlinx.coroutines.runBlocking {
+            tokenManager.clearToken()
+            assertFalse(tokenManager.isLoggedIn())
+
+            val jobsRes = repo.fetchJobs()
+            assertTrue(jobsRes.isSuccess)
+            assertEquals(1, repo.jobListings.value.size)
+            assertEquals("Công Nhân Lắp Ráp Piaggio", repo.jobListings.value[0].title)
+
+            val applyRes = repo.applyToJob(
+                slug = "cty-piaggio-binh-xuyen-1",
+                fullName = "Nguyễn Văn Khách",
+                phone = "0912345678",
+                consent = true
+            )
+            assertTrue(applyRes.isSuccess)
+            assertEquals("APP-GUEST-99", applyRes.getOrNull()?.trackingCode)
+            assertEquals("cty-piaggio-binh-xuyen-1", capturedSlug)
+            assertEquals("Nguyễn Văn Khách", capturedApplyReq?.fullName)
+            assertEquals("0912345678", capturedApplyReq?.phone)
+            assertEquals(true, capturedApplyReq?.consent)
+        }
+    }
 }
 
 

@@ -171,4 +171,23 @@ class SiteGpsCheckInUiTest {
         composeTestRule.onNodeWithTag("button_check_in").assertIsEnabled()
         composeTestRule.onNodeWithTag("button_check_out").assertIsNotEnabled()
     }
+
+    @Test
+    fun `Guest mode allows unauthenticated job application while gating non-job tabs behind login`() {
+        var openLoginClicked = false
+        var backToJobsClicked = false
+
+        composeTestRule.setContent {
+            AuthRequiredTabGate(
+                tab = com.example.ui.viewmodel.NavigationTab.ATTENDANCE,
+                onOpenLogin = { openLoginClicked = true },
+                onBrowseJobs = { backToJobsClicked = true }
+            )
+        }
+
+        composeTestRule.onNodeWithText("Tính Năng Yêu Cầu Đăng Nhập").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Mục \"Chấm công\" chỉ khả dụng sau khi đăng nhập").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("gate_open_login_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("gate_back_to_jobs_button").assertIsDisplayed()
+    }
 }

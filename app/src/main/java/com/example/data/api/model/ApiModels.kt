@@ -263,6 +263,7 @@ data class OtpSendRequest(
 @JsonClass(generateAdapter = true)
 data class OtpSendData(
     @param:Json(name = "sent") val sent: Boolean = false,
+    @param:Json(name = "phoneVerified") val phoneVerified: Boolean = false,
     @param:Json(name = "cooldownSeconds") val cooldownSeconds: Int = 60
 )
 

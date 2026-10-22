@@ -469,8 +469,23 @@ class HrpRepository(
             val api = apiService ?: return@withContext Result.failure(Exception("Dịch vụ mạng chưa khởi tạo"))
             val response = api.sendPhoneOtp(OtpSendRequest(phone = targetPhone))
             val data = response.data
-            if (response.isSuccessful && data != null && data.sent) {
-                Result.success(data)
+            if (response.isSuccessful && data != null) {
+                if (data.phoneVerified) {
+                    tokenManager?.updatePhoneVerified(true)
+                    _workerProfile.value = _workerProfile.value.copy(phoneVerified = true)
+                    Result.success(data)
+                } else if (data.sent) {
+                    Result.success(data)
+                } else {
+                    val fallbackCode = response.error?.code ?: "OTP_SERVICE_UNAVAILABLE"
+                    val fallbackHttp = if (fallbackCode.equals("OTP_SERVICE_UNAVAILABLE", ignoreCase = true)) 503 else 400
+                    val err = ApiErrorParser.fromApiError(
+                        error = response.error ?: ApiError(code = fallbackCode, message = response.message.orEmpty()),
+                        httpCode = fallbackHttp,
+                        fallbackMessage = response.message ?: "Không thể gửi mã OTP"
+                    )
+                    Result.failure(err)
+                }
             } else {
                 val fallbackCode = response.error?.code ?: "OTP_SERVICE_UNAVAILABLE"
                 val fallbackHttp = if (fallbackCode.equals("OTP_SERVICE_UNAVAILABLE", ignoreCase = true)) 503 else 400

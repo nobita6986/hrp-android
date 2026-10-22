@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +40,8 @@ import com.example.ui.theme.HrpTextSecondary
 
 @Composable
 fun HrpTopBar(
+    isLoggedIn: Boolean = true,
+    onLoginClick: (() -> Unit)? = null,
     onLogout: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -118,8 +121,8 @@ fun HrpTopBar(
                 }
             }
 
-            // Logout Action
-            if (onLogout != null) {
+            // Auth Action (Logout when logged in, Login when browsing as guest)
+            if (isLoggedIn && onLogout != null) {
                 Surface(
                     shape = RoundedCornerShape(20.dp),
                     color = HrpPrimarySoft,
@@ -143,6 +146,34 @@ fun HrpTopBar(
                             text = "Đăng xuất",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 color = HrpPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+                }
+            } else if (!isLoggedIn && onLoginClick != null) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = HrpPrimary,
+                    modifier = Modifier
+                        .testTag("button_open_login")
+                        .clickable { onLoginClick() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Login,
+                            contentDescription = "Đăng nhập",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Đăng nhập",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                color = Color.White,
                                 fontWeight = FontWeight.Bold
                             )
                         )

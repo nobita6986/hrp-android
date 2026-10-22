@@ -50,6 +50,9 @@ class HrpViewModel(
     private val _isLoggedIn = MutableStateFlow(tokenManager.isLoggedIn())
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
 
+    private val _showLoginScreen = MutableStateFlow(false)
+    val showLoginScreen: StateFlow<Boolean> = _showLoginScreen.asStateFlow()
+
     private val _isAuthenticating = MutableStateFlow(false)
     val isAuthenticating: StateFlow<Boolean> = _isAuthenticating.asStateFlow()
 
@@ -107,7 +110,9 @@ class HrpViewModel(
     val ctvCandidates: StateFlow<List<CtvCandidate>> = repository.ctvCandidates
     val bodMetrics: StateFlow<BodOverviewStats> = repository.bodMetrics
 
-    private val _currentTab = MutableStateFlow(NavigationTab.HOME)
+    private val _currentTab = MutableStateFlow(
+        if (_isLoggedIn.value) NavigationTab.HOME else NavigationTab.JOBS
+    )
     val currentTab: StateFlow<NavigationTab> = _currentTab.asStateFlow()
 
     private val _toastMessage = MutableStateFlow<String?>(null)
@@ -138,10 +143,22 @@ class HrpViewModel(
             viewModelScope.launch {
                 repository.loadInitialData()
             }
+        } else {
+            _currentTab.value = NavigationTab.JOBS
+            viewModelScope.launch {
+                repository.fetchJobs()
+            }
         }
     }
 
     // ==================== AUTH & REGISTER METHODS ====================
+
+    fun setLoginScreenVisible(visible: Boolean) {
+        _showLoginScreen.value = visible
+        if (!visible) {
+            _loginErrorMessage.value = null
+        }
+    }
 
     fun login(phone: String, pass: String) {
         if (_isAuthenticating.value) return
@@ -159,6 +176,8 @@ class HrpViewModel(
 
             result.onSuccess {
                 _isLoggedIn.value = true
+                _showLoginScreen.value = false
+                _currentTab.value = NavigationTab.HOME
                 _toastMessage.value = "Đăng nhập thành công! Chào mừng trở lại."
             }.onFailure { err ->
                 _loginErrorMessage.value = err.message ?: "Đăng nhập thất bại. Vui lòng thử lại."
@@ -193,6 +212,7 @@ class HrpViewModel(
                     _isAuthenticating.value = false
                     _currentTab.value = NavigationTab.HOME
                     _isLoggedIn.value = true
+                    _showLoginScreen.value = false
                     if (!data.phoneVerified) {
                         _otpErrorMessage.value = null
                         _showPhoneOtpDialog.value = true
@@ -204,6 +224,7 @@ class HrpViewModel(
                     loginResult.onSuccess {
                         _currentTab.value = NavigationTab.HOME
                         _isLoggedIn.value = true
+                        _showLoginScreen.value = false
                         if (!workerProfile.value.phoneVerified) {
                             _otpErrorMessage.value = null
                             _showPhoneOtpDialog.value = true
@@ -228,8 +249,10 @@ class HrpViewModel(
             _otpErrorMessage.value = null
             repository.logout()
             _isLoggedIn.value = false
-            _currentTab.value = NavigationTab.HOME
-            _toastMessage.value = "Đã đăng xuất khỏi tài khoản."
+            _showLoginScreen.value = false
+            _currentTab.value = NavigationTab.JOBS
+            repository.fetchJobs()
+            _toastMessage.value = "Đã đăng xuất khỏi tài khoản. Bạn vẫn có thể xem việc làm và ứng tuyển."
         }
     }
 
@@ -281,8 +304,14 @@ class HrpViewModel(
             _isSendingOtp.value = false
 
             result.onSuccess { data ->
-                startOtpCooldown(data.cooldownSeconds.coerceAtLeast(1))
-                _toastMessage.value = "Đã gửi mã OTP 6 chữ số tới số điện thoại $targetPhone"
+                if (data.phoneVerified) {
+                    _showPhoneOtpDialog.value = false
+                    _toastMessage.value = "Số điện thoại $targetPhone đã được xác thực!"
+                    repository.fetchProfile()
+                } else {
+                    startOtpCooldown(data.cooldownSeconds.coerceAtLeast(1))
+                    _toastMessage.value = "Đã gửi mã OTP 6 chữ số tới số điện thoại $targetPhone"
+                }
             }.onFailure { err ->
                 // Strictly surface real backend errors (e.g., 503 OTP_SERVICE_UNAVAILABLE, 429 RATE_LIMIT_EXCEEDED)
                 _otpErrorMessage.value = formatOtpUiError(err, "Không thể gửi mã OTP lúc này.")
@@ -384,6 +413,14 @@ class HrpViewModel(
             _isLoadingJobDetail.value = false
         }
         _currentTab.value = tab
+        if (!_isLoggedIn.value) {
+            if (tab == NavigationTab.JOBS) {
+                viewModelScope.launch {
+                    repository.fetchJobs()
+                }
+            }
+            return
+        }
         viewModelScope.launch {
             when (tab) {
                 NavigationTab.HOME -> {
@@ -568,6 +605,18 @@ class HrpViewModel(
         consent: Boolean = true
     ) {
         if (_isSubmittingApplication.value) return
+        if (!_isLoggedIn.value) {
+            val trimmedName = candidateName.trim()
+            val trimmedPhone = phone.trim()
+            if (trimmedName.isBlank() || trimmedPhone.isBlank()) {
+                _toastMessage.value = "Vui lòng nhập đầy đủ Họ và tên và Số điện thoại liên hệ"
+                return
+            }
+            if (!com.example.data.repository.HrpFormatters.isValidStrictVnPhone(trimmedPhone)) {
+                _toastMessage.value = "Số điện thoại liên hệ phải gồm đúng 10 chữ số, bắt đầu bằng 0"
+                return
+            }
+        }
         val currentJob = _showApplyJobDialog.value
         val slug = currentJob?.slug?.takeIf { it.isNotBlank() } ?: jobSlugOrTitle
 

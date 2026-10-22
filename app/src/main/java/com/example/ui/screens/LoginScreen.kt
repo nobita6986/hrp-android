@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.WorkOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -38,6 +40,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -77,8 +80,14 @@ fun LoginScreen(
     errorMessage: String?,
     onLogin: (phone: String, pass: String) -> Unit,
     onRegister: ((phone: String, pass: String, fullName: String) -> Unit)? = null,
+    onBrowseJobsWithoutLogin: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    if (onBrowseJobsWithoutLogin != null) {
+        BackHandler {
+            onBrowseJobsWithoutLogin()
+        }
+    }
     var isRegisterMode by remember { mutableStateOf(false) }
     var fullName by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -410,6 +419,35 @@ fun LoginScreen(
                                     )
                                 )
                             }
+                        }
+                    }
+
+                    if (onBrowseJobsWithoutLogin != null) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = onBrowseJobsWithoutLogin,
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, HrpPrimary.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .testTag("browse_jobs_guest_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.WorkOutline,
+                                contentDescription = null,
+                                tint = HrpPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Xem danh sách việc làm & Ứng tuyển",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = HrpPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            )
                         }
                     }
 
