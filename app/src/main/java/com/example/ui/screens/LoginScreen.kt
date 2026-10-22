@@ -460,7 +460,7 @@ fun LoginScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
-                                    text = "Tài khoản mới có thể xem việc làm và ứng tuyển ngay. Số điện thoại khởi tạo ở trạng thái chưa xác minh OTP (phoneVerified=false); tính năng Góp ý cần xác minh OTP và Chấm công/Giới thiệu cần hồ sơ Worker được phân công ACTIVE.",
+                                    text = "Tài khoản đăng ký mới bắt buộc xác thực mã OTP 6 chữ số gửi về số điện thoại để kích hoạt và đăng nhập vào ứng dụng. Nếu chưa đăng ký, bạn vẫn có thể bấm \"Xem danh sách việc làm & Ứng tuyển\" ở trên.",
                                     style = MaterialTheme.typography.bodySmall.copy(
                                         color = HrpNavyDark,
                                         fontSize = 11.sp,

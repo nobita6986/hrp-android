@@ -322,13 +322,9 @@ fun ApplyJobModal(
                                 )
                             )
                             Text(
-                                text = if (phoneVerified) {
-                                    "Trạng thái SĐT: Đã xác minh OTP"
-                                } else {
-                                    "Trạng thái SĐT: Chưa xác minh OTP (phoneVerified=false)"
-                                },
+                                text = "Trạng thái SĐT: Đã xác minh OTP",
                                 style = MaterialTheme.typography.bodySmall.copy(
-                                    color = if (phoneVerified) HrpSuccess else HrpWarning,
+                                    color = HrpSuccess,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 11.sp
                                 )
@@ -442,7 +438,7 @@ fun PhoneOtpVerificationModal(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
                 Text(
-                    text = "Bảo mật tài khoản Người lao động HRP",
+                    text = "Bắt buộc xác thực OTP để kích hoạt tài khoản & đăng nhập ứng dụng",
                     style = MaterialTheme.typography.bodySmall.copy(color = HrpTextSecondary)
                 )
             }

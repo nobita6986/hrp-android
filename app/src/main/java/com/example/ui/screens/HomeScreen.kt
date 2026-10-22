@@ -267,23 +267,6 @@ private fun MobileAccessStatusCard(
                     )
                 }
             }
-            if (!profile.phoneVerified) {
-                Spacer(modifier = Modifier.height(10.dp))
-                OutlinedButton(
-                    onClick = onOpenPhoneOtp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("home_open_phone_otp_button"),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text(
-                        text = "Xác minh số điện thoại qua OTP",
-                        fontWeight = FontWeight.Bold,
-                        color = HrpPrimary,
-                        fontSize = 12.sp
-                    )
-                }
-            }
         }
     }
 }
@@ -387,27 +370,16 @@ private fun WorkerHeroCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Phone & OTP verification status badge (explicitly shows phoneVerified=false without fake OTP)
+            // Phone & OTP verification status badge (authenticated users have verified OTP)
             val phoneDisplay = profile.phone.ifBlank { "Chưa cập nhật SĐT" }
-            val otpStatusText = if (profile.phoneVerified) {
-                "SĐT: $phoneDisplay • Đã xác minh OTP"
-            } else {
-                "SĐT: $phoneDisplay • Chưa xác minh OTP (phoneVerified=false)"
-            }
-            val otpStatusColor = if (profile.phoneVerified) HrpSuccess else HrpWarning
+            val otpStatusText = "SĐT: $phoneDisplay • Đã xác minh OTP"
+            val otpStatusColor = HrpSuccess
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(HrpNavySurface)
-                    .then(
-                        if (!profile.phoneVerified) {
-                            Modifier.clickable { onOpenPhoneOtp() }
-                        } else {
-                            Modifier
-                        }
-                    )
                     .padding(horizontal = 12.dp, vertical = 7.dp)
                     .testTag("home_phone_verification_badge"),
                 verticalAlignment = Alignment.CenterVertically
@@ -428,21 +400,6 @@ private fun WorkerHeroCard(
                     ),
                     modifier = Modifier.weight(1f)
                 )
-                if (!profile.phoneVerified) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Xác minh OTP",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp
-                        ),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(HrpPrimary)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))

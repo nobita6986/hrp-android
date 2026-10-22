@@ -125,7 +125,7 @@ open class TokenManager(private val context: Context) {
     }
 
     open fun isLoggedIn(): Boolean {
-        return !getToken().isNullOrBlank()
+        return !getToken().isNullOrBlank() && isPhoneVerified()
     }
 
     open fun saveTokenSync(token: String) {

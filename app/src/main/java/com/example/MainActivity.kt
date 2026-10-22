@@ -114,6 +114,12 @@ fun MainAppHost(
     val showLoginScreen by viewModel.showLoginScreen.collectAsState()
     val isAuthenticating by viewModel.isAuthenticating.collectAsState()
     val loginErrorMessage by viewModel.loginErrorMessage.collectAsState()
+    val workerProfile by viewModel.workerProfile.collectAsState()
+    val showPhoneOtpDialog by viewModel.showPhoneOtpDialog.collectAsState()
+    val otpCooldownSeconds by viewModel.otpCooldownSeconds.collectAsState()
+    val otpErrorMessage by viewModel.otpErrorMessage.collectAsState()
+    val isSendingOtp by viewModel.isSendingOtp.collectAsState()
+    val isVerifyingOtp by viewModel.isVerifyingOtp.collectAsState()
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -170,6 +176,18 @@ fun MainAppHost(
                     viewModel.selectTab(NavigationTab.JOBS)
                 }
             )
+            if (showPhoneOtpDialog) {
+                PhoneOtpVerificationModal(
+                    phone = workerProfile.phone,
+                    cooldownSeconds = otpCooldownSeconds,
+                    isSendingOtp = isSendingOtp,
+                    isVerifyingOtp = isVerifyingOtp,
+                    errorMessage = otpErrorMessage,
+                    onSendOtp = { phone -> viewModel.sendPhoneOtp(phone) },
+                    onVerifyOtp = { code -> viewModel.verifyPhoneOtp(code) },
+                    onDismiss = { viewModel.setPhoneOtpDialogVisible(false) }
+                )
+            }
         } else {
             HrpApp(viewModel = viewModel)
         }
@@ -458,7 +476,7 @@ fun HrpApp(
         )
     }
 
-    if (isLoggedIn && showPhoneOtpDialog) {
+    if (showPhoneOtpDialog) {
         PhoneOtpVerificationModal(
             phone = workerProfile.phone,
             cooldownSeconds = otpCooldownSeconds,

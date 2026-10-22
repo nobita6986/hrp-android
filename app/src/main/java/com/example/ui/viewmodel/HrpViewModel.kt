@@ -147,6 +147,9 @@ class HrpViewModel(
         } else {
             _currentTab.value = NavigationTab.JOBS
             viewModelScope.launch {
+                if (!tokenManager.getToken().isNullOrBlank() && !tokenManager.isPhoneVerified()) {
+                    repository.logout()
+                }
                 repository.fetchJobs()
             }
         }
@@ -194,10 +197,19 @@ class HrpViewModel(
             _isAuthenticating.value = false
 
             result.onSuccess {
-                _isLoggedIn.value = true
-                _showLoginScreen.value = false
-                _currentTab.value = NavigationTab.HOME
-                _toastMessage.value = "Đăng nhập thành công! Chào mừng trở lại."
+                if (workerProfile.value.phoneVerified || tokenManager.isPhoneVerified()) {
+                    _isLoggedIn.value = true
+                    _showLoginScreen.value = false
+                    _currentTab.value = NavigationTab.HOME
+                    _toastMessage.value = "Đăng nhập thành công! Chào mừng trở lại."
+                } else {
+                    _isLoggedIn.value = false
+                    _showLoginScreen.value = true
+                    _otpErrorMessage.value = null
+                    _showPhoneOtpDialog.value = true
+                    val targetPhone = workerProfile.value.phone.ifBlank { phone.trim() }
+                    sendPhoneOtp(targetPhone)
+                }
             }.onFailure { err ->
                 _loginErrorMessage.value = err.message ?: "Đăng nhập thất bại. Vui lòng thử lại."
             }
@@ -227,30 +239,40 @@ class HrpViewModel(
 
             val registerResult = repository.register(phone, pass, trimmedName)
             registerResult.onSuccess { data ->
-                if (!data.token.isNullOrBlank() || tokenManager.isLoggedIn()) {
+                val targetPhone = data.phone.ifBlank { phone.trim() }
+                if (!data.token.isNullOrBlank() || !tokenManager.getToken().isNullOrBlank()) {
                     _isAuthenticating.value = false
-                    _currentTab.value = NavigationTab.HOME
-                    _isLoggedIn.value = true
-                    _showLoginScreen.value = false
-                    if (!data.phoneVerified) {
+                    if (data.phoneVerified || workerProfile.value.phoneVerified) {
+                        _isLoggedIn.value = true
+                        _showLoginScreen.value = false
+                        _currentTab.value = NavigationTab.HOME
+                        _toastMessage.value = "Đăng ký tài khoản thành công!"
+                    } else {
+                        // Strict OTP gate: do NOT mark isLoggedIn=true and do NOT enter app before OTP is verified
+                        _isLoggedIn.value = false
+                        _showLoginScreen.value = true
                         _otpErrorMessage.value = null
                         _showPhoneOtpDialog.value = true
+                        sendPhoneOtp(targetPhone)
                     }
-                    _toastMessage.value = "Đăng ký tài khoản thành công! Vui lòng xác minh OTP cho số điện thoại ${data.phone.ifBlank { phone }}."
                 } else {
                     val loginResult = repository.login(phone, pass)
                     _isAuthenticating.value = false
                     loginResult.onSuccess {
-                        _currentTab.value = NavigationTab.HOME
-                        _isLoggedIn.value = true
-                        _showLoginScreen.value = false
-                        if (!workerProfile.value.phoneVerified) {
+                        if (workerProfile.value.phoneVerified || tokenManager.isPhoneVerified()) {
+                            _isLoggedIn.value = true
+                            _showLoginScreen.value = false
+                            _currentTab.value = NavigationTab.HOME
+                            _toastMessage.value = "Đăng ký tài khoản thành công!"
+                        } else {
+                            _isLoggedIn.value = false
+                            _showLoginScreen.value = true
                             _otpErrorMessage.value = null
                             _showPhoneOtpDialog.value = true
+                            sendPhoneOtp(targetPhone)
                         }
-                        _toastMessage.value = "Đăng ký tài khoản thành công!"
                     }.onFailure {
-                        _toastMessage.value = "Đăng ký thành công! Vui lòng đăng nhập."
+                        _loginErrorMessage.value = "Vui lòng đăng nhập lại để kích hoạt mã OTP cho số điện thoại $targetPhone."
                     }
                 }
             }.onFailure { err ->
@@ -285,6 +307,14 @@ class HrpViewModel(
         _showPhoneOtpDialog.value = visible
         if (!visible) {
             _otpErrorMessage.value = null
+            otpTimerJob?.cancel()
+            _otpCooldownSeconds.value = 0
+            if (!workerProfile.value.phoneVerified && !tokenManager.isPhoneVerified()) {
+                _isLoggedIn.value = false
+                viewModelScope.launch {
+                    repository.logout()
+                }
+            }
         }
     }
 
@@ -325,8 +355,11 @@ class HrpViewModel(
             result.onSuccess { data ->
                 if (data.phoneVerified) {
                     _showPhoneOtpDialog.value = false
-                    _toastMessage.value = "Số điện thoại $targetPhone đã được xác thực!"
-                    repository.fetchProfile()
+                    _isLoggedIn.value = true
+                    _showLoginScreen.value = false
+                    _currentTab.value = NavigationTab.HOME
+                    _toastMessage.value = "Số điện thoại $targetPhone đã được xác thực! Chào mừng bạn vào ứng dụng."
+                    repository.loadInitialData()
                 } else {
                     startOtpCooldown(data.cooldownSeconds.coerceAtLeast(1))
                     _toastMessage.value = "Đã gửi mã OTP 6 chữ số tới số điện thoại $targetPhone"
@@ -354,8 +387,11 @@ class HrpViewModel(
 
             result.onSuccess {
                 _showPhoneOtpDialog.value = false
-                _toastMessage.value = "Xác thực số điện thoại thành công!"
-                repository.fetchProfile()
+                _isLoggedIn.value = true
+                _showLoginScreen.value = false
+                _currentTab.value = NavigationTab.HOME
+                _toastMessage.value = "Xác thực OTP thành công! Tài khoản đã được kích hoạt."
+                repository.loadInitialData()
             }.onFailure { err ->
                 _otpErrorMessage.value = formatOtpUiError(err, "Mã OTP không chính xác hoặc đã hết hạn.")
             }

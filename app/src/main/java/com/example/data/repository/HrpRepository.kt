@@ -335,7 +335,7 @@ class HrpRepository(
                 _feedbackList.value = emptyList()
                 _referralList.value = emptyList()
 
-                if (!sessionToken.isNullOrBlank()) {
+                if (!sessionToken.isNullOrBlank() && isPhoneVerified) {
                     loadInitialData()
                 }
 
@@ -416,7 +416,10 @@ class HrpRepository(
                     )
                 }
 
-                loadInitialData()
+                fetchProfile()
+                if (_workerProfile.value.phoneVerified) {
+                    loadInitialData()
+                }
 
                 Result.success(response)
             } else {

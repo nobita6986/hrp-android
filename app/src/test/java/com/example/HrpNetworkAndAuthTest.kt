@@ -975,6 +975,57 @@ class HrpNetworkAndAuthTest {
             assertEquals(true, capturedApplyReq?.consent)
         }
     }
+
+    @Test
+    fun `unverified registration never marks tokenManager isLoggedIn true until OTP is verified`() {
+        val fakeApi = java.lang.reflect.Proxy.newProxyInstance(
+            com.example.data.api.HrpApiService::class.java.classLoader,
+            arrayOf(com.example.data.api.HrpApiService::class.java)
+        ) { _, method, _ ->
+            when (method.name) {
+                "register" -> com.example.data.api.model.ApiResponse(
+                    ok = true,
+                    data = com.example.data.api.model.RegisterData(
+                        userId = "u-unverified-01",
+                        phone = "0936224490",
+                        fullName = "Thuận",
+                        role = "WORKER",
+                        phoneVerified = false,
+                        token = "jwt_unverified_reg_token"
+                    )
+                )
+                "verifyPhoneOtp" -> com.example.data.api.model.ApiResponse(
+                    ok = true,
+                    data = com.example.data.api.model.OtpVerifyData(
+                        phoneVerified = true,
+                        verifiedAt = "2026-10-22T07:00:00.000Z"
+                    )
+                )
+                else -> com.example.data.api.model.ApiResponse<Any>(ok = true)
+            }
+        } as com.example.data.api.HrpApiService
+
+        val tokenManager = TokenManager(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        val repo = com.example.data.repository.HrpRepository(apiService = fakeApi, tokenManager = tokenManager)
+
+        kotlinx.coroutines.runBlocking {
+            tokenManager.clearToken()
+            val regRes = repo.register("0936224490", "password123", "Thuận")
+            assertTrue(regRes.isSuccess)
+
+            // Token is available for AuthInterceptor to call /api/auth/phone-otp/send & /verify,
+            // but isLoggedIn() MUST be false while phoneVerified == false!
+            assertEquals("jwt_unverified_reg_token", tokenManager.getToken())
+            assertFalse(tokenManager.isPhoneVerified())
+            assertFalse(tokenManager.isLoggedIn())
+
+            // Only after verifyPhoneOtp succeeds does isLoggedIn() become true
+            val verifyRes = repo.verifyPhoneOtp("123456")
+            assertTrue(verifyRes.isSuccess)
+            assertTrue(tokenManager.isPhoneVerified())
+            assertTrue(tokenManager.isLoggedIn())
+        }
+    }
 }
 
 
