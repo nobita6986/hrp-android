@@ -327,7 +327,7 @@ class HrpNetworkAndAuthTest {
         assertEquals(0.0, sameTimeDomain.standardHours, 0.001)
         assertEquals(AttendanceStatus.ABSENT, sameTimeDomain.status)
 
-        // Valid 7.5h reward shift (08:00 -> 15:30) computes 7.5h when regularHours is null
+        // Valid 7.5h shift (08:00 -> 15:30) computes 7.5h when regularHours is null
         val sevenHalfDto = AttendanceDayResponse(
             id = "att-7-5h",
             workDate = "2026-10-21",
@@ -340,6 +340,22 @@ class HrpNetworkAndAuthTest {
         val sevenHalfDomain = sevenHalfDto.toDomain()
         assertEquals(7.5, sevenHalfDomain.standardHours, 0.001)
         assertEquals(AttendanceStatus.APPROVED, sevenHalfDomain.status)
+
+        // Half-shift or short shift (4.5h from ProjectShift / TimesheetLine) is preserved without 6h-12h clipping
+        val halfShiftDto = AttendanceDayResponse(
+            id = "att-4-5h",
+            workDate = "2026-10-22",
+            shift = "CA1",
+            checkInTime = "08:00",
+            checkOutTime = "12:30",
+            regularHours = 4.5,
+            geofenceResult = "INSIDE",
+            status = "APPROVED"
+        )
+        val halfShiftDomain = halfShiftDto.toDomain()
+        assertEquals(4.5, halfShiftDomain.standardHours, 0.001)
+        assertEquals("Ca CA1", halfShiftDomain.shiftName)
+        assertEquals(AttendanceStatus.APPROVED, halfShiftDomain.status)
     }
 
     @Test

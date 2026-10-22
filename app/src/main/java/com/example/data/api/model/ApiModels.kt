@@ -898,7 +898,7 @@ data class AttendanceDayResponse(
     @param:Json(name = "status") val status: String? = null,
     @param:Json(name = "note") val note: String? = ""
 ) {
-    fun toDomain(nowMs: Long = System.currentTimeMillis()): AttendanceDay {
+    fun toDomain(): AttendanceDay {
         val rawDate = workDate ?: dateString ?: ""
         val resolvedDate = if (rawDate.length >= 10 && rawDate[4] == '-' && rawDate[7] == '-') {
             rawDate.take(10)
@@ -914,43 +914,49 @@ data class AttendanceDayResponse(
             checkInTime = checkInTime,
             checkOutTime = checkOutTime
         )
-        val checkInEpochMs = RewardAttendancePolicy.parseDateAndTimeEpochMs(resolvedDate, checkInTime)
-        val isExpiredUnclosed = hasCheckIn && !hasCheckOut &&
-            checkInEpochMs != null && (nowMs - checkInEpochMs) > RewardAttendancePolicy.MAX_CHECKOUT_DELAY_MS
 
-        val isValidShiftDuration = RewardAttendancePolicy.isValidRewardShiftDuration(calculatedHours)
+        val backendHours = regularHours ?: standardHours
         val resolvedStandardHours = when {
-            !hasCheckIn || !hasCheckOut -> 0.0
-            !isValidShiftDuration -> 0.0
-            regularHours != null && regularHours in RewardAttendancePolicy.MIN_SHIFT_HOURS..RewardAttendancePolicy.MAX_SHIFT_HOURS -> regularHours
-            standardHours != null && standardHours in RewardAttendancePolicy.MIN_SHIFT_HOURS..RewardAttendancePolicy.MAX_SHIFT_HOURS -> standardHours
-            else -> calculatedHours ?: 0.0
+            hasCheckIn && !hasCheckOut -> 0.0
+            backendHours != null && backendHours > 0.0 -> backendHours
+            hasCheckIn && hasCheckOut -> (calculatedHours ?: 0.0).coerceAtLeast(0.0)
+            else -> 0.0
         }
 
         val domainStatus = when {
             status?.uppercase() in listOf("DISPUTED", "REJECTED") -> AttendanceStatus.DISPUTED
             status?.uppercase() == "ABSENT" -> AttendanceStatus.ABSENT
             riskFlag || geofenceResult.equals("OUTSIDE", ignoreCase = true) -> AttendanceStatus.DISPUTED
-            isExpiredUnclosed -> AttendanceStatus.ABSENT
             hasCheckIn && !hasCheckOut -> AttendanceStatus.PENDING
-            hasCheckIn && hasCheckOut && !isValidShiftDuration -> AttendanceStatus.ABSENT
-            hasCheckIn && hasCheckOut && isValidShiftDuration && isInsideGeofence -> AttendanceStatus.APPROVED
+            hasCheckIn && hasCheckOut && resolvedStandardHours <= 0.0 -> AttendanceStatus.ABSENT
+            (hasCheckIn && hasCheckOut && resolvedStandardHours > 0.0 && isInsideGeofence) ||
+                (status?.uppercase() in listOf("APPROVED", "APPENDED") && resolvedStandardHours > 0.0 && isInsideGeofence) ->
+                AttendanceStatus.APPROVED
             else -> AttendanceStatus.PENDING
         }
 
         val resolvedNote = when {
             !note.isNullOrBlank() -> note
-            isExpiredUnclosed -> "Quá 12h không bấm Tan ca — ca làm không được ghi nhận"
-            hasCheckIn && hasCheckOut && !isValidShiftDuration ->
-                "Ca làm không được ghi nhận (thời gian giữa Vào ca và Tan ca phải từ 6h đến 12h)"
+            hasCheckIn && !hasCheckOut -> "Đang trong ca (chờ bấm Tan ca)"
+            hasCheckIn && hasCheckOut && resolvedStandardHours <= 0.0 ->
+                "Thời gian Vào ca và Tan ca trùng nhau — chưa phát sinh giờ công"
             else -> ""
+        }
+
+        val resolvedShiftName = when (val rawShift = shift?.trim()?.takeIf { it.isNotEmpty() && !it.equals("DEFAULT", ignoreCase = true) }) {
+            null -> shiftName?.takeIf { it.isNotBlank() } ?: "Ca tiêu chuẩn"
+            "MORNING" -> "Ca sáng"
+            "AFTERNOON" -> "Ca chiều"
+            "NIGHT" -> "Ca đêm"
+            "HC" -> "Ca hành chính (HC)"
+            else -> if (rawShift.startsWith("Ca ", ignoreCase = true)) rawShift else "Ca $rawShift"
         }
 
         return AttendanceDay(
             id = id,
             dateString = resolvedDate,
             dayOfWeek = dayOfWeek?.takeIf { it.isNotBlank() } ?: resolvedDate,
-            shiftName = shift?.takeIf { it.isNotBlank() } ?: shiftName?.takeIf { it.isNotBlank() } ?: "Ca tiêu chuẩn",
+            shiftName = resolvedShiftName,
             checkInTime = checkInTime,
             checkOutTime = checkOutTime,
             standardHours = resolvedStandardHours,
@@ -984,7 +990,8 @@ data class CheckInEventData(
     @param:Json(name = "attendanceId") val attendanceId: String = "",
     @param:Json(name = "action") val action: String = "CHECK_IN",
     @param:Json(name = "recordedAt") val recordedAt: String = "",
-    @param:Json(name = "geofenceResult") val geofenceResult: String? = null
+    @param:Json(name = "geofenceResult") val geofenceResult: String? = null,
+    @param:Json(name = "shiftCode") val shiftCode: String? = null
 )
 
 // Legacy Check-in DTOs kept for compatibility

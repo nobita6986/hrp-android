@@ -478,7 +478,7 @@ private fun AttendanceCardItem(
                 Column {
                     Text("Giờ ra", style = MaterialTheme.typography.bodySmall.copy(color = HrpTextSecondary, fontSize = 11.sp))
                     Text(
-                        text = day.checkOutTime ?: if (day.status == AttendanceStatus.ABSENT) "Quá 12h (Hủy)" else "Đang làm",
+                        text = day.checkOutTime ?: if (day.status == AttendanceStatus.ABSENT) "--:--" else "Đang làm",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = when {

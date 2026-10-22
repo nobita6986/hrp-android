@@ -105,10 +105,8 @@ data class AttendanceDay(
 
 enum class CheckInPhase {
     IDLE_READY,
-    WAITING_MIN_6H,
-    WINDOW_OPEN_6H_TO_12H,
-    EXPIRED_OVER_12H_UNCLOSED,
-    COMPLETED_WAIT_20H
+    IN_SHIFT_ACTIVE,
+    COMPLETED_TODAY
 }
 
 enum class AttendancePrimaryAction {
@@ -122,42 +120,45 @@ data class CheckInGateState(
     val isCheckOutEnabled: Boolean,
     val phase: CheckInPhase,
     val primaryAction: AttendancePrimaryAction = when {
-        phase == CheckInPhase.WINDOW_OPEN_6H_TO_12H -> AttendancePrimaryAction.CHECK_OUT
+        phase == CheckInPhase.IN_SHIFT_ACTIVE -> AttendancePrimaryAction.CHECK_OUT
         isCheckInEnabled -> AttendancePrimaryAction.CHECK_IN
         isCheckOutEnabled -> AttendancePrimaryAction.CHECK_OUT
         else -> AttendancePrimaryAction.NONE
     },
     val isPrimaryButtonEnabled: Boolean = isCheckInEnabled || isCheckOutEnabled,
     val buttonTitle: String = when (phase) {
-        CheckInPhase.IDLE_READY, CheckInPhase.EXPIRED_OVER_12H_UNCLOSED -> "VÀO CA"
-        CheckInPhase.WAITING_MIN_6H -> "ĐANG TRONG CA"
-        CheckInPhase.WINDOW_OPEN_6H_TO_12H -> "TAN CA"
-        CheckInPhase.COMPLETED_WAIT_20H -> "ĐÃ HOÀN TẤT"
+        CheckInPhase.IDLE_READY -> "VÀO CA"
+        CheckInPhase.IN_SHIFT_ACTIVE -> "TAN CA"
+        CheckInPhase.COMPLETED_TODAY -> "ĐÃ HOÀN TẤT"
     },
     val buttonSubtitle: String = "Chấm công GPS",
     val statusHint: String? = null
 )
 
 /**
- * Reward Attendance Policy (Chấm công lấy thưởng):
- * - Mỗi chu kỳ người dùng được chấm 1 lần Vào ca và 1 lần Tan ca.
- * - Khoảng cách giữa Vào ca và Tan ca tối thiểu 6h, tối đa 12h.
- * - Sau khi bấm Vào ca (0h <= t < 6h): làm mờ cả 2 nút Vào ca và Tan ca.
- * - Từ đủ 6h đến 12h (6h <= t <= 12h): mở nút Tan ca, vẫn khóa nút Vào ca.
- * - Nếu quá 12h chưa bấm Tan ca (t > 12h): ca làm KHÔNG được ghi nhận (0.0h), mở lại cả 2 nút.
- * - Nếu đã Tan ca hợp lệ (6h <= duration <= 12h): ca làm được ghi nhận theo số giờ thực tế (không fix cứng 8.0h),
- *   và sau 20h kể từ lần bấm Vào ca trước thì mở lại nút Vào ca cho chu kỳ tiếp theo.
+ * Project Shift Attendance Policy (Đồng bộ theo cơ chế Ca làm việc thực tế của Dự án `ProjectShift` trên Backend):
+ * - Bỏ cơ chế khóa 6h–12h–20h cũ.
+ * - Khi chưa Vào ca trong ngày (và không có ca đêm đang mở từ hôm qua): hiển thị nút "VÀO CA" (mở).
+ * - Ngay sau khi bấm "VÀO CA" thành công: chuyển ngay sang nút "TAN CA" (mở) để công nhân bấm khi kết thúc ca thực tế
+ *   (hỗ trợ cả ca ngày và ca đêm qua 00:00 ngày hôm sau).
+ * - Sau khi đã bấm "TAN CA": hoàn tất ca trong ngày ("ĐÃ HOÀN TẤT", tạm khóa trong ngày và tự mở lại vào ngày mới).
  */
 object RewardAttendancePolicy {
-    const val MIN_SHIFT_HOURS = 6.0
-    const val MAX_SHIFT_HOURS = 12.0
-    const val NEXT_CHECKIN_COOLDOWN_HOURS = 20.0
-
-    const val MIN_CHECKOUT_DELAY_MS = 6L * 60L * 60L * 1000L
-    const val MAX_CHECKOUT_DELAY_MS = 12L * 60L * 60L * 1000L
-    const val NEXT_CHECKIN_COOLDOWN_MS = 20L * 60L * 60L * 1000L
+    const val OVERNIGHT_SHIFT_MAX_WINDOW_MS = 18L * 60L * 60L * 1000L
 
     private val vnTimeZone: java.util.TimeZone = java.util.TimeZone.getTimeZone("Asia/Ho_Chi_Minh")
+
+    fun formatDateIsoVn(epochMs: Long): String {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        sdf.timeZone = vnTimeZone
+        return sdf.format(java.util.Date(epochMs))
+    }
+
+    fun formatTimeHhMmVn(epochMs: Long): String {
+        val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+        sdf.timeZone = vnTimeZone
+        return sdf.format(java.util.Date(epochMs))
+    }
 
     fun parseDateAndTimeEpochMs(workDate: String?, timeStr: String?): Long? {
         val rawTime = timeStr?.trim()?.takeIf { it.isNotEmpty() } ?: return null
@@ -205,29 +206,13 @@ object RewardAttendancePolicy {
         if (outMs < inMs && checkOutTime != null && !checkOutTime.contains("T")) {
             outMs += 24L * 60L * 60L * 1000L
         }
-        if (outMs < inMs) return 0.0
+        if (outMs <= inMs) return 0.0
         val rawHours = (outMs - inMs).toDouble() / (60.0 * 60.0 * 1000.0)
         return Math.round(rawHours * 10.0) / 10.0
     }
 
-    fun isValidRewardShiftDuration(hours: Double?): Boolean {
-        return hours != null && hours >= MIN_SHIFT_HOURS && hours <= MAX_SHIFT_HOURS
-    }
-
-    fun formatDurationText(remainingMs: Long): String {
-        val clamped = remainingMs.coerceAtLeast(0L)
-        val totalMinutes = (clamped + 59_999L) / 60_000L
-        val hours = totalMinutes / 60L
-        val minutes = totalMinutes % 60L
-        return when {
-            hours > 0L && minutes > 0L -> "${hours}h ${minutes}p"
-            hours > 0L -> "${hours}h"
-            else -> "${minutes.coerceAtLeast(1L)}p"
-        }
-    }
-
     /**
-     * Evaluates button enablement and explanatory hint for Vào Ca (GPS) and Tan Ca (GPS).
+     * Evaluates button state for Vào Ca (GPS) and Tan Ca (GPS) aligned with Backend ProjectShift rules.
      */
     fun evaluateButtonGate(
         attendanceList: List<AttendanceDay>,
@@ -235,122 +220,102 @@ object RewardAttendancePolicy {
         cachedCheckOutMs: Long = 0L,
         nowMs: Long = System.currentTimeMillis()
     ): CheckInGateState {
-        // Resolve latest check-in / check-out from attendanceList and local session cache
-        val latestRecord = attendanceList
-            .filter { !it.checkInTime.isNullOrBlank() }
-            .maxByOrNull { parseDateAndTimeEpochMs(it.dateString, it.checkInTime) ?: 0L }
+        val todayIso = formatDateIsoVn(nowMs)
+        val yesterdayIso = formatDateIsoVn(nowMs - 24L * 60L * 60L * 1000L)
 
-        val recordInMs = latestRecord?.let { parseDateAndTimeEpochMs(it.dateString, it.checkInTime) } ?: 0L
-        val recordOutMs = latestRecord?.let {
-            val rawOut = parseDateAndTimeEpochMs(it.dateString, it.checkOutTime)
-            if (rawOut != null && recordInMs > 0L && rawOut < recordInMs && it.checkOutTime?.contains("T") != true) {
-                rawOut + 24L * 60L * 60L * 1000L
+        val todayRecord = attendanceList.firstOrNull { it.dateString == todayIso }
+        val yesterdayRecord = attendanceList.firstOrNull { it.dateString == yesterdayIso }
+
+        val cachedInDate = if (cachedCheckInMs > 0L) formatDateIsoVn(cachedCheckInMs) else ""
+        val cachedHasCheckOut = cachedCheckOutMs >= cachedCheckInMs && cachedCheckOutMs > 0L
+
+        val hasTodayCheckIn = !todayRecord?.checkInTime.isNullOrBlank() || cachedInDate == todayIso
+        val hasTodayCheckOut = !todayRecord?.checkOutTime.isNullOrBlank() ||
+            (cachedInDate == todayIso && cachedHasCheckOut)
+
+        // 1. Today's shift has both Check-In and Check-Out -> Completed for today
+        if (hasTodayCheckIn && hasTodayCheckOut) {
+            val outTimeText = todayRecord?.checkOutTime?.takeIf { it.isNotBlank() }
+                ?: if (cachedCheckOutMs > 0L) formatTimeHhMmVn(cachedCheckOutMs) else ""
+            val subText = if (outTimeText.isNotBlank()) {
+                "Đã tan ca lúc $outTimeText"
             } else {
-                rawOut
+                "Đã chấm đủ công hôm nay"
             }
-        } ?: 0L
-
-        val useCached = cachedCheckInMs > recordInMs
-        val activeCheckInMs = if (useCached) cachedCheckInMs else recordInMs
-        val activeCheckOutMs = if (useCached) {
-            if (cachedCheckOutMs >= cachedCheckInMs) cachedCheckOutMs else 0L
-        } else {
-            maxOf(recordOutMs, if (cachedCheckOutMs >= recordInMs) cachedCheckOutMs else 0L)
-        }
-
-        if (activeCheckInMs <= 0L) {
             return CheckInGateState(
-                isCheckInEnabled = true,
+                isCheckInEnabled = false,
                 isCheckOutEnabled = false,
-                phase = CheckInPhase.IDLE_READY,
-                primaryAction = AttendancePrimaryAction.CHECK_IN,
-                isPrimaryButtonEnabled = true,
-                buttonTitle = "VÀO CA",
-                buttonSubtitle = "Chấm công GPS",
-                statusHint = null
+                phase = CheckInPhase.COMPLETED_TODAY,
+                primaryAction = AttendancePrimaryAction.NONE,
+                isPrimaryButtonEnabled = false,
+                buttonTitle = "ĐÃ HOÀN TẤT",
+                buttonSubtitle = subText,
+                statusHint = "Đã hoàn tất chấm công Vào ca và Tan ca hôm nay theo ca làm việc của dự án."
             )
         }
 
-        val elapsedSinceCheckInMs = (nowMs - activeCheckInMs).coerceAtLeast(0L)
-
-        // Case 1: User already checked out for this shift
-        if (activeCheckOutMs >= activeCheckInMs && activeCheckOutMs > 0L) {
-            val shiftDurationMs = activeCheckOutMs - activeCheckInMs
-            val isValidShift = shiftDurationMs in MIN_CHECKOUT_DELAY_MS..MAX_CHECKOUT_DELAY_MS
-            if (isValidShift && elapsedSinceCheckInMs < NEXT_CHECKIN_COOLDOWN_MS) {
-                val remainingTo20h = NEXT_CHECKIN_COOLDOWN_MS - elapsedSinceCheckInMs
-                val waitText = formatDurationText(remainingTo20h)
-                return CheckInGateState(
-                    isCheckInEnabled = false,
-                    isCheckOutEnabled = false,
-                    phase = CheckInPhase.COMPLETED_WAIT_20H,
-                    primaryAction = AttendancePrimaryAction.NONE,
-                    isPrimaryButtonEnabled = false,
-                    buttonTitle = "ĐÃ HOÀN TẤT",
-                    buttonSubtitle = "Mở lại sau $waitText",
-                    statusHint = "Đã hoàn tất ca chấm công hôm nay. Nút Chấm công Vào Ca sẽ mở lại sau $waitText (đủ 20h kể từ lúc Vào ca)."
-                )
+        // 2. Today has Check-In without Check-Out -> In Shift, immediately ready for Check-Out ("TAN CA")
+        if (hasTodayCheckIn) {
+            val inTimeText = todayRecord?.checkInTime?.takeIf { it.isNotBlank() }
+                ?: if (cachedCheckInMs > 0L) formatTimeHhMmVn(cachedCheckInMs) else ""
+            val shiftBadge = todayRecord?.shiftName?.takeIf {
+                it.isNotBlank() && it != "Ca tiêu chuẩn" && it != "Ca dự án"
+            }
+            val subText = when {
+                shiftBadge != null && inTimeText.isNotBlank() -> "$shiftBadge • Vào $inTimeText"
+                inTimeText.isNotBlank() -> "Đã vào ca lúc $inTimeText"
+                else -> "Bấm khi kết thúc ca"
             }
             return CheckInGateState(
-                isCheckInEnabled = true,
-                isCheckOutEnabled = false,
-                phase = CheckInPhase.IDLE_READY,
-                primaryAction = AttendancePrimaryAction.CHECK_IN,
+                isCheckInEnabled = false,
+                isCheckOutEnabled = true,
+                phase = CheckInPhase.IN_SHIFT_ACTIVE,
+                primaryAction = AttendancePrimaryAction.CHECK_OUT,
                 isPrimaryButtonEnabled = true,
-                buttonTitle = "VÀO CA",
-                buttonSubtitle = "Chấm công GPS",
-                statusHint = if (!isValidShift) {
-                    "Lần chấm trước chưa đủ tối thiểu 6h làm việc nên không được ghi nhận."
-                } else {
-                    null
-                }
+                buttonTitle = "TAN CA",
+                buttonSubtitle = subText,
+                statusHint = "Đang trong ca làm việc${if (inTimeText.isNotBlank()) " (vào ca lúc $inTimeText)" else ""}. Bấm Tan Ca khi kết thúc ca làm việc."
             )
         }
 
-        // Case 2: User checked in and has NOT checked out yet
-        return when {
-            elapsedSinceCheckInMs < MIN_CHECKOUT_DELAY_MS -> {
-                val remainingTo6h = MIN_CHECKOUT_DELAY_MS - elapsedSinceCheckInMs
-                val waitText = formatDurationText(remainingTo6h)
-                CheckInGateState(
-                    isCheckInEnabled = false,
-                    isCheckOutEnabled = false,
-                    phase = CheckInPhase.WAITING_MIN_6H,
-                    primaryAction = AttendancePrimaryAction.NONE,
-                    isPrimaryButtonEnabled = false,
-                    buttonTitle = "ĐANG TRONG CA",
-                    buttonSubtitle = "Mở Tan ca sau $waitText",
-                    statusHint = "Đã ghi nhận Vào ca. Nút chấm công tạm khóa — bạn có thể bấm Tan Ca sau $waitText (vào/ra cách nhau 6h–12h)."
-                )
-            }
-            elapsedSinceCheckInMs <= MAX_CHECKOUT_DELAY_MS -> {
-                val remainingTo12h = MAX_CHECKOUT_DELAY_MS - elapsedSinceCheckInMs
-                val windowText = formatDurationText(remainingTo12h)
-                CheckInGateState(
-                    isCheckInEnabled = false,
-                    isCheckOutEnabled = true,
-                    phase = CheckInPhase.WINDOW_OPEN_6H_TO_12H,
-                    primaryAction = AttendancePrimaryAction.CHECK_OUT,
-                    isPrimaryButtonEnabled = true,
-                    buttonTitle = "TAN CA",
-                    buttonSubtitle = "Còn $windowText để bấm",
-                    statusHint = "Đã đủ 6h làm việc! Hãy bấm Tan Ca trong vòng $windowText nữa (quá 12h không bấm Tan ca sẽ không được ghi nhận)."
-                )
-            }
-            else -> {
-                // Over 12h without checking out: shift is NOT recorded, re-open button for a new Check-In
-                CheckInGateState(
-                    isCheckInEnabled = true,
-                    isCheckOutEnabled = true,
-                    phase = CheckInPhase.EXPIRED_OVER_12H_UNCLOSED,
-                    primaryAction = AttendancePrimaryAction.CHECK_IN,
-                    isPrimaryButtonEnabled = true,
-                    buttonTitle = "VÀO CA",
-                    buttonSubtitle = "Bắt đầu ca mới (GPS)",
-                    statusHint = "Ca trước đã quá 12h không bấm Tan ca nên không được ghi nhận. Đã mở lại nút để chấm công Vào ca mới."
-                )
-            }
+        // 3. Support overnight shift from yesterday (open Check-In on yesterday within 18h window)
+        val hasYesterdayOpenRecord = yesterdayRecord != null &&
+            !yesterdayRecord.checkInTime.isNullOrBlank() &&
+            yesterdayRecord.checkOutTime.isNullOrBlank()
+        val hasYesterdayOpenCache = cachedInDate == yesterdayIso &&
+            !cachedHasCheckOut &&
+            (yesterdayRecord == null || yesterdayRecord.checkOutTime.isNullOrBlank())
+
+        val yesterdayInMs = yesterdayRecord?.let { parseDateAndTimeEpochMs(it.dateString, it.checkInTime) }
+            ?: if (cachedInDate == yesterdayIso) cachedCheckInMs else 0L
+        val isOvernightActive = yesterdayInMs > 0L && (nowMs - yesterdayInMs) in 0L..OVERNIGHT_SHIFT_MAX_WINDOW_MS
+
+        if ((hasYesterdayOpenRecord || hasYesterdayOpenCache) && isOvernightActive) {
+            val inTimeText = yesterdayRecord?.checkInTime?.takeIf { it.isNotBlank() }
+                ?: formatTimeHhMmVn(yesterdayInMs)
+            return CheckInGateState(
+                isCheckInEnabled = false,
+                isCheckOutEnabled = true,
+                phase = CheckInPhase.IN_SHIFT_ACTIVE,
+                primaryAction = AttendancePrimaryAction.CHECK_OUT,
+                isPrimaryButtonEnabled = true,
+                buttonTitle = "TAN CA",
+                buttonSubtitle = if (inTimeText.isNotBlank()) "Ca đêm • Vào $inTimeText" else "Kết thúc ca đêm",
+                statusHint = "Đang trong ca đêm từ hôm qua${if (inTimeText.isNotBlank()) " (vào ca lúc $inTimeText)" else ""}. Bấm Tan Ca để chốt công ca đêm."
+            )
         }
+
+        // 4. Default: Ready to Check-In ("VÀO CA")
+        return CheckInGateState(
+            isCheckInEnabled = true,
+            isCheckOutEnabled = false,
+            phase = CheckInPhase.IDLE_READY,
+            primaryAction = AttendancePrimaryAction.CHECK_IN,
+            isPrimaryButtonEnabled = true,
+            buttonTitle = "VÀO CA",
+            buttonSubtitle = "Chấm công GPS",
+            statusHint = null
+        )
     }
 }
 

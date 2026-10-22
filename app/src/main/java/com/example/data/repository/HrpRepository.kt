@@ -1061,11 +1061,15 @@ class HrpRepository(
             _lastCheckOutEpochMs.value = 0L
             tokenManager?.saveCheckInOutTimestamps(checkInEpochMs = parsedInMs, checkOutEpochMs = 0L)
 
+            val resolvedShiftLabel = eventData.shiftCode?.takeIf { it.isNotBlank() }?.let {
+                if (it.startsWith("Ca ", ignoreCase = true)) it else "Ca $it"
+            } ?: "Ca tiêu chuẩn"
+
             _attendanceList.value.firstOrNull { it.dateString == today } ?: AttendanceDay(
                 id = eventData.attendanceId.ifBlank { UUID.randomUUID().toString() },
                 dateString = today,
                 dayOfWeek = today,
-                shiftName = "Ca tiêu chuẩn",
+                shiftName = resolvedShiftLabel,
                 checkInTime = eventData.recordedAt,
                 checkOutTime = null,
                 standardHours = 0.0,
@@ -1073,7 +1077,7 @@ class HrpRepository(
                 locationVerified = eventData.geofenceResult.equals("INSIDE", ignoreCase = true),
                 factorySite = site.ifBlank { _workerProfile.value.factoryLocation.ifBlank { "Nhà máy HRP" } },
                 status = AttendanceStatus.PENDING,
-                note = "Đang trong ca (cần bấm Tan ca sau 6h–12h để được ghi nhận)",
+                note = "Đang trong ca (chờ bấm Tan ca)",
                 geofenceResult = eventData.geofenceResult,
                 riskFlag = false
             )
@@ -1105,7 +1109,7 @@ class HrpRepository(
         )
         if (!gate.isCheckOutEnabled) {
             return@withContext Result.failure(
-                Exception(gate.statusHint ?: "Chưa đủ điều kiện bấm Tan Ca (khoảng cách Vào ca – Tan ca phải từ 6h đến 12h).")
+                Exception(gate.statusHint ?: "Cần ghi nhận Vào ca trước khi thực hiện Tan ca.")
             )
         }
         if (latitude == null || longitude == null) {
@@ -1124,11 +1128,15 @@ class HrpRepository(
             _lastCheckOutEpochMs.value = parsedOutMs
             tokenManager?.saveCheckInOutTimestamps(checkOutEpochMs = parsedOutMs)
 
+            val resolvedShiftLabel = eventData.shiftCode?.takeIf { it.isNotBlank() }?.let {
+                if (it.startsWith("Ca ", ignoreCase = true)) it else "Ca $it"
+            } ?: "Ca tiêu chuẩn"
+
             _attendanceList.value.firstOrNull { it.dateString == today } ?: AttendanceDay(
                 id = eventData.attendanceId.ifBlank { UUID.randomUUID().toString() },
                 dateString = today,
                 dayOfWeek = today,
-                shiftName = "Ca tiêu chuẩn",
+                shiftName = resolvedShiftLabel,
                 checkInTime = null,
                 checkOutTime = eventData.recordedAt,
                 standardHours = 0.0,
