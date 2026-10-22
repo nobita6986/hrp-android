@@ -378,8 +378,17 @@ private fun WorkerHeroCard(
                             fontSize = 18.sp
                         )
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Mã NV: ${profile.employeeCode.ifBlank { "Chưa liên kết" }} • ${profile.position.ifBlank { "Người lao động" }}",
+                        text = "Mã NV: ${profile.employeeCode.ifBlank { "Chưa liên kết" }}",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color.White.copy(alpha = 0.82f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                    Text(
+                        text = profile.position.ifBlank { "Người lao động" },
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = 12.sp
@@ -467,7 +476,7 @@ private fun WorkerHeroCard(
 
                 Box(
                     modifier = Modifier
-                        .size(242.dp)
+                        .size(292.dp)
                         .clip(CircleShape)
                         .background(outerRingColor),
                     contentAlignment = Alignment.Center
@@ -482,10 +491,11 @@ private fun WorkerHeroCard(
                         },
                         enabled = isButtonClickable,
                         modifier = Modifier
-                            .size(216.dp)
+                            .size(264.dp)
                             .alpha(if (isButtonClickable) 1f else 0.45f)
                             .testTag("button_unified_attendance"),
                         shape = CircleShape,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp),
                         elevation = ButtonDefaults.buttonElevation(
                             defaultElevation = 8.dp,
                             pressedElevation = 2.dp,
@@ -501,30 +511,31 @@ private fun WorkerHeroCard(
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(6.dp)
+                            modifier = Modifier.padding(4.dp)
                         ) {
                             Icon(
                                 imageVector = buttonIcon,
                                 contentDescription = null,
-                                modifier = Modifier.size(48.dp)
+                                modifier = Modifier.size(60.dp)
                             )
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = displayTitle,
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 21.sp,
+                                    fontSize = 24.sp,
                                     color = Color.White,
                                     letterSpacing = 0.5.sp
                                 ),
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                maxLines = 1
                             )
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = displaySubtitle,
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
+                                    fontSize = 13.5.sp,
                                     color = Color.White.copy(alpha = 0.9f)
                                 ),
                                 textAlign = TextAlign.Center,

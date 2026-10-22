@@ -59,6 +59,21 @@ class HrpViewModel(
     private val _loginErrorMessage = MutableStateFlow<String?>(null)
     val loginErrorMessage: StateFlow<String?> = _loginErrorMessage.asStateFlow()
 
+    private val _rememberedPhone = MutableStateFlow(tokenManager.getRememberedPhone())
+    val rememberedPhone: StateFlow<String> = _rememberedPhone.asStateFlow()
+
+    private val _rememberedPassword = MutableStateFlow(tokenManager.getRememberedPassword())
+    val rememberedPassword: StateFlow<String> = _rememberedPassword.asStateFlow()
+
+    private val _rememberedFullName = MutableStateFlow(tokenManager.getRememberedFullName())
+    val rememberedFullName: StateFlow<String> = _rememberedFullName.asStateFlow()
+
+    private fun refreshRememberedAccountState() {
+        _rememberedPhone.value = tokenManager.getRememberedPhone()
+        _rememberedPassword.value = tokenManager.getRememberedPassword()
+        _rememberedFullName.value = tokenManager.getRememberedFullName()
+    }
+
     // ==================== OTP & VERIFICATION DIALOG STATE ====================
     private val _showPhoneOtpDialog = MutableStateFlow(false)
     val showPhoneOtpDialog: StateFlow<Boolean> = _showPhoneOtpDialog.asStateFlow()
@@ -176,9 +191,37 @@ class HrpViewModel(
     // ==================== AUTH & REGISTER METHODS ====================
 
     fun setLoginScreenVisible(visible: Boolean) {
+        refreshRememberedAccountState()
         _showLoginScreen.value = visible
         if (!visible) {
             _loginErrorMessage.value = null
+        }
+    }
+
+    fun quickRelogin() {
+        if (_isAuthenticating.value) return
+        refreshRememberedAccountState()
+        val savedPhone = _rememberedPhone.value
+        val savedPass = _rememberedPassword.value
+        if (savedPhone.isNotBlank() && savedPass.isNotBlank()) {
+            login(savedPhone, savedPass)
+            return
+        }
+        viewModelScope.launch {
+            _isAuthenticating.value = true
+            _loginErrorMessage.value = null
+            val result = repository.restoreRememberedAccount()
+            _isAuthenticating.value = false
+            result.onSuccess {
+                refreshRememberedAccountState()
+                _isLoggedIn.value = true
+                _showLoginScreen.value = false
+                _currentTab.value = NavigationTab.HOME
+                _toastMessage.value = "Đã khôi phục tài khoản thành công!"
+            }.onFailure { err ->
+                _showLoginScreen.value = true
+                _loginErrorMessage.value = err.message ?: "Vui lòng nhập mật khẩu để đăng nhập lại."
+            }
         }
     }
 
@@ -195,6 +238,7 @@ class HrpViewModel(
 
             val result = repository.login(phone.trim(), pass.trim())
             _isAuthenticating.value = false
+            refreshRememberedAccountState()
 
             result.onSuccess {
                 if (workerProfile.value.phoneVerified || tokenManager.isPhoneVerified()) {
@@ -238,6 +282,7 @@ class HrpViewModel(
             _loginErrorMessage.value = null
 
             val registerResult = repository.register(phone, pass, trimmedName)
+            refreshRememberedAccountState()
             registerResult.onSuccess { data ->
                 val targetPhone = data.phone.ifBlank { phone.trim() }
                 if (!data.token.isNullOrBlank() || !tokenManager.getToken().isNullOrBlank()) {
@@ -289,11 +334,12 @@ class HrpViewModel(
             _showPhoneOtpDialog.value = false
             _otpErrorMessage.value = null
             repository.logout()
+            refreshRememberedAccountState()
             _isLoggedIn.value = false
             _showLoginScreen.value = false
             _currentTab.value = NavigationTab.JOBS
             repository.fetchJobs()
-            _toastMessage.value = "Đã đăng xuất khỏi tài khoản. Bạn vẫn có thể xem việc làm và ứng tuyển."
+            _toastMessage.value = "Đã đăng xuất. Tài khoản vẫn được lưu sẵn để bạn đăng nhập lại chỉ với 1 chạm."
         }
     }
 

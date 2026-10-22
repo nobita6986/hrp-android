@@ -32,6 +32,10 @@ open class TokenManager(private val context: Context) {
         private const val SP_KEY_HAS_ASSIGNMENT = "cached_has_assignment"
         private const val SP_KEY_LAST_CHECK_IN_MS = "cached_last_check_in_ms"
         private const val SP_KEY_LAST_CHECK_OUT_MS = "cached_last_check_out_ms"
+        private const val SP_KEY_REMEMBERED_PHONE = "remembered_account_phone"
+        private const val SP_KEY_REMEMBERED_PASSWORD = "remembered_account_password"
+        private const val SP_KEY_REMEMBERED_NAME = "remembered_account_name"
+        private const val SP_KEY_REMEMBERED_TOKEN = "remembered_account_token"
 
         val PREF_TOKEN = stringPreferencesKey("jwt_token")
         val PREF_ROLE = stringPreferencesKey("user_role")
@@ -113,6 +117,44 @@ open class TokenManager(private val context: Context) {
         return sharedPrefs.getLong(SP_KEY_LAST_CHECK_OUT_MS, 0L)
     }
 
+    open fun getRememberedPhone(): String {
+        return sharedPrefs.getString(SP_KEY_REMEMBERED_PHONE, "") ?: ""
+    }
+
+    open fun getRememberedPassword(): String {
+        return sharedPrefs.getString(SP_KEY_REMEMBERED_PASSWORD, "") ?: ""
+    }
+
+    open fun getRememberedFullName(): String {
+        return sharedPrefs.getString(SP_KEY_REMEMBERED_NAME, "") ?: ""
+    }
+
+    open fun getRememberedToken(): String {
+        return sharedPrefs.getString(SP_KEY_REMEMBERED_TOKEN, "") ?: ""
+    }
+
+    open fun saveRememberedCredentials(
+        phone: String,
+        password: String? = null,
+        fullName: String? = null,
+        verifiedToken: String? = null
+    ) {
+        val editor = sharedPrefs.edit()
+        if (phone.isNotBlank()) {
+            editor.putString(SP_KEY_REMEMBERED_PHONE, phone.trim())
+        }
+        if (!password.isNullOrBlank()) {
+            editor.putString(SP_KEY_REMEMBERED_PASSWORD, password)
+        }
+        if (!fullName.isNullOrBlank() && fullName != "Người Lao Động") {
+            editor.putString(SP_KEY_REMEMBERED_NAME, fullName.trim())
+        }
+        if (!verifiedToken.isNullOrBlank()) {
+            editor.putString(SP_KEY_REMEMBERED_TOKEN, verifiedToken)
+        }
+        editor.apply()
+    }
+
     open fun saveCheckInOutTimestamps(checkInEpochMs: Long? = null, checkOutEpochMs: Long? = null) {
         val editor = sharedPrefs.edit()
         if (checkInEpochMs != null) {
@@ -157,7 +199,7 @@ open class TokenManager(private val context: Context) {
         cachedRole.set(role)
         _tokenFlow.value = token
 
-        sharedPrefs.edit()
+        val editor = sharedPrefs.edit()
             .putString(SP_KEY_TOKEN, token)
             .putString(SP_KEY_PHONE, phone)
             .putString(SP_KEY_ROLE, role)
@@ -165,7 +207,16 @@ open class TokenManager(private val context: Context) {
             .putBoolean(SP_KEY_PHONE_VERIFIED, phoneVerified)
             .putString(SP_KEY_VERIFICATION_STATUS, verificationStatus)
             .putBoolean(SP_KEY_HAS_ASSIGNMENT, hasActiveAssignment)
-            .apply()
+        if (phone.isNotBlank()) {
+            editor.putString(SP_KEY_REMEMBERED_PHONE, phone.trim())
+        }
+        if (fullName.isNotBlank() && fullName != "Người Lao Động") {
+            editor.putString(SP_KEY_REMEMBERED_NAME, fullName.trim())
+        }
+        if (phoneVerified && token.isNotBlank()) {
+            editor.putString(SP_KEY_REMEMBERED_TOKEN, token)
+        }
+        editor.apply()
 
         context.dataStore.edit { preferences ->
             preferences[PREF_TOKEN] = token
@@ -179,7 +230,16 @@ open class TokenManager(private val context: Context) {
     }
 
     suspend fun updatePhoneVerified(verified: Boolean) {
-        sharedPrefs.edit().putBoolean(SP_KEY_PHONE_VERIFIED, verified).apply()
+        val editor = sharedPrefs.edit().putBoolean(SP_KEY_PHONE_VERIFIED, verified)
+        val currentToken = getToken()
+        val currentPhone = getPhone()
+        if (verified && !currentToken.isNullOrBlank()) {
+            editor.putString(SP_KEY_REMEMBERED_TOKEN, currentToken)
+        }
+        if (verified && !currentPhone.isNullOrBlank()) {
+            editor.putString(SP_KEY_REMEMBERED_PHONE, currentPhone)
+        }
+        editor.apply()
         context.dataStore.edit { preferences ->
             preferences[PREF_PHONE_VERIFIED] = verified
         }
@@ -211,7 +271,17 @@ open class TokenManager(private val context: Context) {
         cachedRole.set(null)
         _tokenFlow.value = null
 
-        sharedPrefs.edit().clear().apply()
+        sharedPrefs.edit()
+            .remove(SP_KEY_TOKEN)
+            .remove(SP_KEY_ROLE)
+            .remove(SP_KEY_PHONE)
+            .remove(SP_KEY_NAME)
+            .remove(SP_KEY_PHONE_VERIFIED)
+            .remove(SP_KEY_VERIFICATION_STATUS)
+            .remove(SP_KEY_HAS_ASSIGNMENT)
+            .remove(SP_KEY_LAST_CHECK_IN_MS)
+            .remove(SP_KEY_LAST_CHECK_OUT_MS)
+            .apply()
 
         context.dataStore.edit { preferences ->
             preferences.remove(PREF_TOKEN)

@@ -1025,6 +1025,19 @@ class HrpNetworkAndAuthTest {
             assertTrue(verifyRes.isSuccess)
             assertTrue(tokenManager.isPhoneVerified())
             assertTrue(tokenManager.isLoggedIn())
+
+            // When user accidentally logs out, active session is cleared, but remembered account cookies remain intact
+            repo.logout()
+            assertFalse(tokenManager.isLoggedIn())
+            assertEquals("0936224490", tokenManager.getRememberedPhone())
+            assertEquals("password123", tokenManager.getRememberedPassword())
+            assertEquals("Thuận", tokenManager.getRememberedFullName())
+            assertEquals("jwt_unverified_reg_token", tokenManager.getRememberedToken())
+
+            // Restoring remembered account re-authenticates seamlessly without requiring user to remember credentials
+            val restoreRes = repo.restoreRememberedAccount()
+            assertTrue(restoreRes.isSuccess)
+            assertTrue(tokenManager.isLoggedIn())
         }
     }
 }

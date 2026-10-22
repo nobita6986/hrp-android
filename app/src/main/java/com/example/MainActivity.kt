@@ -114,6 +114,9 @@ fun MainAppHost(
     val showLoginScreen by viewModel.showLoginScreen.collectAsState()
     val isAuthenticating by viewModel.isAuthenticating.collectAsState()
     val loginErrorMessage by viewModel.loginErrorMessage.collectAsState()
+    val rememberedPhone by viewModel.rememberedPhone.collectAsState()
+    val rememberedPassword by viewModel.rememberedPassword.collectAsState()
+    val rememberedFullName by viewModel.rememberedFullName.collectAsState()
     val workerProfile by viewModel.workerProfile.collectAsState()
     val showPhoneOtpDialog by viewModel.showPhoneOtpDialog.collectAsState()
     val otpCooldownSeconds by viewModel.otpCooldownSeconds.collectAsState()
@@ -174,6 +177,12 @@ fun MainAppHost(
                 onBrowseJobsWithoutLogin = {
                     viewModel.setLoginScreenVisible(false)
                     viewModel.selectTab(NavigationTab.JOBS)
+                },
+                initialPhone = rememberedPhone,
+                initialPassword = rememberedPassword,
+                rememberedFullName = rememberedFullName,
+                onQuickRelogin = {
+                    viewModel.quickRelogin()
                 }
             )
             if (showPhoneOtpDialog) {
@@ -202,6 +211,8 @@ fun HrpApp(
     val coroutineScope = rememberCoroutineScope()
 
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
+    val rememberedPhone by viewModel.rememberedPhone.collectAsState()
+    val rememberedFullName by viewModel.rememberedFullName.collectAsState()
     val workerProfile by viewModel.workerProfile.collectAsState()
     val verificationInfo by viewModel.verificationInfo.collectAsState()
     val publicProjects by viewModel.publicProjects.collectAsState()
@@ -374,7 +385,10 @@ fun HrpApp(
                             AuthRequiredTabGate(
                                 tab = NavigationTab.HOME,
                                 onOpenLogin = { viewModel.setLoginScreenVisible(true) },
-                                onBrowseJobs = { viewModel.selectTab(NavigationTab.JOBS) }
+                                onBrowseJobs = { viewModel.selectTab(NavigationTab.JOBS) },
+                                rememberedPhone = rememberedPhone,
+                                rememberedFullName = rememberedFullName,
+                                onQuickRelogin = { viewModel.quickRelogin() }
                             )
                         }
                     }
@@ -395,7 +409,10 @@ fun HrpApp(
                             AuthRequiredTabGate(
                                 tab = NavigationTab.ATTENDANCE,
                                 onOpenLogin = { viewModel.setLoginScreenVisible(true) },
-                                onBrowseJobs = { viewModel.selectTab(NavigationTab.JOBS) }
+                                onBrowseJobs = { viewModel.selectTab(NavigationTab.JOBS) },
+                                rememberedPhone = rememberedPhone,
+                                rememberedFullName = rememberedFullName,
+                                onQuickRelogin = { viewModel.quickRelogin() }
                             )
                         }
                     }
@@ -412,7 +429,10 @@ fun HrpApp(
                             AuthRequiredTabGate(
                                 tab = NavigationTab.FEEDBACK,
                                 onOpenLogin = { viewModel.setLoginScreenVisible(true) },
-                                onBrowseJobs = { viewModel.selectTab(NavigationTab.JOBS) }
+                                onBrowseJobs = { viewModel.selectTab(NavigationTab.JOBS) },
+                                rememberedPhone = rememberedPhone,
+                                rememberedFullName = rememberedFullName,
+                                onQuickRelogin = { viewModel.quickRelogin() }
                             )
                         }
                     }
@@ -433,7 +453,10 @@ fun HrpApp(
                             AuthRequiredTabGate(
                                 tab = NavigationTab.REFERRAL,
                                 onOpenLogin = { viewModel.setLoginScreenVisible(true) },
-                                onBrowseJobs = { viewModel.selectTab(NavigationTab.JOBS) }
+                                onBrowseJobs = { viewModel.selectTab(NavigationTab.JOBS) },
+                                rememberedPhone = rememberedPhone,
+                                rememberedFullName = rememberedFullName,
+                                onQuickRelogin = { viewModel.quickRelogin() }
                             )
                         }
                     }
@@ -521,6 +544,9 @@ fun AuthRequiredTabGate(
     tab: NavigationTab,
     onOpenLogin: () -> Unit,
     onBrowseJobs: () -> Unit,
+    rememberedPhone: String = "",
+    rememberedFullName: String = "",
+    onQuickRelogin: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val featureDescription = when (tab) {
@@ -609,6 +635,37 @@ fun AuthRequiredTabGate(
                 )
 
                 Spacer(modifier = Modifier.height(20.dp))
+
+                if (rememberedPhone.isNotBlank() && onQuickRelogin != null) {
+                    Button(
+                        onClick = onQuickRelogin,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("gate_quick_relogin_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Login,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (rememberedFullName.isNotBlank()) {
+                                "Đăng Nhập Lại: $rememberedFullName ($rememberedPhone)"
+                            } else {
+                                "Đăng Nhập Lại: $rememberedPhone"
+                            },
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 13.5.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
 
                 Button(
                     onClick = onOpenLogin,

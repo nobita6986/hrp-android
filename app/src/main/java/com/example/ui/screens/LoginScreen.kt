@@ -81,6 +81,10 @@ fun LoginScreen(
     onLogin: (phone: String, pass: String) -> Unit,
     onRegister: ((phone: String, pass: String, fullName: String) -> Unit)? = null,
     onBrowseJobsWithoutLogin: (() -> Unit)? = null,
+    initialPhone: String = "",
+    initialPassword: String = "",
+    rememberedFullName: String = "",
+    onQuickRelogin: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (onBrowseJobsWithoutLogin != null) {
@@ -90,8 +94,8 @@ fun LoginScreen(
     }
     var isRegisterMode by remember { mutableStateOf(false) }
     var fullName by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var phone by remember(initialPhone) { mutableStateOf(initialPhone) }
+    var password by remember(initialPassword) { mutableStateOf(initialPassword) }
     var passwordVisible by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
@@ -188,6 +192,76 @@ fun LoginScreen(
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
+
+                    AnimatedVisibility(visible = !isRegisterMode && initialPhone.isNotBlank()) {
+                        Column {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = HrpPrimarySoft,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, HrpPrimary.copy(alpha = 0.35f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("quick_relogin_card")
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Tài khoản đã lưu trên máy",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                color = HrpTextSecondary,
+                                                fontSize = 11.sp
+                                            )
+                                        )
+                                        Text(
+                                            text = if (rememberedFullName.isNotBlank()) {
+                                                "$rememberedFullName • $initialPhone"
+                                            } else {
+                                                initialPhone
+                                            },
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                color = HrpNavyDark,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(
+                                        onClick = {
+                                            focusManager.clearFocus()
+                                            if (onQuickRelogin != null) {
+                                                onQuickRelogin()
+                                            } else {
+                                                onLogin(phone, password)
+                                            }
+                                        },
+                                        enabled = !isAuthenticating,
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = HrpPrimary),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                            horizontal = 12.dp,
+                                            vertical = 6.dp
+                                        ),
+                                        modifier = Modifier.testTag("quick_relogin_button")
+                                    ) {
+                                        Text(
+                                            text = "Vào lại ngay",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+                    }
 
                     AnimatedVisibility(visible = isRegisterMode) {
                         Column {

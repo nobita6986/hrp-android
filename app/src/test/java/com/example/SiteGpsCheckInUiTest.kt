@@ -70,6 +70,8 @@ class SiteGpsCheckInUiTest {
         }
 
         composeTestRule.onNodeWithText("CHỜ XÁC NHẬN SITE").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Mã NV: NV-4321").assertIsDisplayed()
+        composeTestRule.onNodeWithText("CTY- PIAGGIO - BÌNH XUYÊN 1").assertIsDisplayed()
         composeTestRule.onNodeWithText(
             "Tạm khóa chấm công: Site dự án chưa được Admin xác nhận tọa độ GPS"
         ).assertIsDisplayed()
@@ -196,17 +198,23 @@ class SiteGpsCheckInUiTest {
     fun `Guest mode allows unauthenticated job application while gating non-job tabs behind login`() {
         var openLoginClicked = false
         var backToJobsClicked = false
+        var quickReloginClicked = false
 
         composeTestRule.setContent {
             AuthRequiredTabGate(
                 tab = com.example.ui.viewmodel.NavigationTab.ATTENDANCE,
                 onOpenLogin = { openLoginClicked = true },
-                onBrowseJobs = { backToJobsClicked = true }
+                onBrowseJobs = { backToJobsClicked = true },
+                rememberedPhone = "0987654321",
+                rememberedFullName = "Duc Nguyen",
+                onQuickRelogin = { quickReloginClicked = true }
             )
         }
 
         composeTestRule.onNodeWithText("Tính Năng Yêu Cầu Đăng Nhập").assertIsDisplayed()
         composeTestRule.onNodeWithText("Mục \"Bảng công\" chỉ khả dụng sau khi đăng nhập").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("gate_quick_relogin_button").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Đăng Nhập Lại: Duc Nguyen (0987654321)").assertIsDisplayed()
         composeTestRule.onNodeWithTag("gate_open_login_button").assertIsDisplayed()
         composeTestRule.onNodeWithTag("gate_back_to_jobs_button").assertIsDisplayed()
     }

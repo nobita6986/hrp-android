@@ -305,6 +305,12 @@ class HrpRepository(
                 } else {
                     tokenManager?.updatePhoneVerified(false)
                 }
+                tokenManager?.saveRememberedCredentials(
+                    phone = resolvedPhone,
+                    password = password,
+                    fullName = resolvedName,
+                    verifiedToken = if (isPhoneVerified) sessionToken else null
+                )
 
                 _currentRole.value = UserRole.WORKER
                 _workerProfile.value = WorkerProfile(
@@ -417,6 +423,12 @@ class HrpRepository(
                 }
 
                 fetchProfile()
+                tokenManager?.saveRememberedCredentials(
+                    phone = _workerProfile.value.phone.ifBlank { resolvedPhone },
+                    password = password,
+                    fullName = _workerProfile.value.fullName.ifBlank { resolvedName },
+                    verifiedToken = if (_workerProfile.value.phoneVerified) token else null
+                )
                 if (_workerProfile.value.phoneVerified) {
                     loadInitialData()
                 }
@@ -582,6 +594,44 @@ class HrpRepository(
         _tickets.value = emptyList()
         _feedbackList.value = emptyList()
         _referralList.value = emptyList()
+    }
+
+    /**
+     * Restores a remembered worker session via saved credentials or saved session cookie token
+     * so workers who accidentally tap Logout do not need to hunt for or remember their account.
+     */
+    suspend fun restoreRememberedAccount(): Result<Boolean> = withContext(Dispatchers.IO) {
+        val tm = tokenManager ?: return@withContext Result.failure(Exception("Không tìm thấy bộ nhớ phiên đăng nhập"))
+        val rememberedPhone = tm.getRememberedPhone()
+        val rememberedPass = tm.getRememberedPassword()
+        val rememberedName = tm.getRememberedFullName()
+        val rememberedToken = tm.getRememberedToken()
+
+        if (rememberedPhone.isNotBlank() && rememberedPass.isNotBlank()) {
+            val loginRes = login(rememberedPhone, rememberedPass)
+            if (loginRes.isSuccess) {
+                return@withContext Result.success(true)
+            }
+        }
+
+        if (rememberedPhone.isNotBlank() && rememberedToken.isNotBlank()) {
+            tm.saveUserSession(
+                token = rememberedToken,
+                phone = rememberedPhone,
+                role = "WORKER",
+                fullName = rememberedName.ifBlank { "Người Lao Động" },
+                phoneVerified = true
+            )
+            _workerProfile.value = _workerProfile.value.copy(
+                phone = rememberedPhone,
+                fullName = rememberedName.ifBlank { "Người Lao Động" },
+                phoneVerified = true
+            )
+            loadInitialData()
+            return@withContext Result.success(true)
+        }
+
+        Result.failure(Exception("Chưa có tài khoản lưu sẵn trên thiết bị này"))
     }
 
     // ==================== DATA SYNC / REFRESH ====================
