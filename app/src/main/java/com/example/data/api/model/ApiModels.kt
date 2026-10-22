@@ -632,9 +632,13 @@ data class JobOpeningResponse(
 
         val resolvedStatusLabel = statusLabel?.takeIf { it.isNotBlank() } ?: "Đang tuyển"
 
-        val resolvedBenefits = benefits.ifEmpty {
+        val filteredBenefits = benefits.filterNot {
+            val lower = it.trim().lowercase()
+            lower.startsWith("ca:") || lower.startsWith("ca làm") || lower.startsWith("ca lam")
+        }
+
+        val resolvedBenefits = filteredBenefits.ifEmpty {
             listOfNotNull(
-                shift?.takeIf { it.isNotBlank() }?.let { "Ca: $it" },
                 resolvedJobTypeLabel.takeIf { it.isNotBlank() },
                 resolvedStatusLabel
             )

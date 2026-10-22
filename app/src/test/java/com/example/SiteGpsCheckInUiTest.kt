@@ -210,4 +210,47 @@ class SiteGpsCheckInUiTest {
         composeTestRule.onNodeWithTag("gate_open_login_button").assertIsDisplayed()
         composeTestRule.onNodeWithTag("gate_back_to_jobs_button").assertIsDisplayed()
     }
+
+    @Test
+    fun `JobBoardScreen hides shift information on both job cards and job detail view`() {
+        val sampleJob = com.example.data.api.model.JobOpeningResponse(
+            id = "4b268856-018f-46b9-a2be-941401f2f277",
+            slug = "cty-piaggio-binh-xuyen-1-0-23f5f452",
+            title = "CTY- PIAGGIO - BÌNH XUYÊN 1",
+            companyName = "CTY- PIAGGIO",
+            position = "CTY- PIAGGIO - BÌNH XUYÊN 1",
+            shift = "08:00-20:00",
+            location = "KCN BÌNH XUYÊN 1",
+            jobType = "toan_thoi_gian",
+            availableSlots = 20,
+            deadline = "2026-10-31T00:00:00.000Z",
+            statusLabel = "Đang tuyển",
+            isHot = true,
+            salaryDisplay = "10~15tr"
+        ).toDomain()
+
+        var selectedDetail by androidx.compose.runtime.mutableStateOf<com.example.data.model.JobOpening?>(null)
+
+        composeTestRule.setContent {
+            com.example.ui.screens.JobBoardScreen(
+                jobs = listOf(sampleJob),
+                onApplyJob = {},
+                selectedJobDetail = selectedDetail,
+                onViewJobDetail = { selectedDetail = it },
+                onCloseJobDetail = { selectedDetail = null }
+            )
+        }
+
+        // 1. Job Card view: location is visible, shift and "Ca: ..." are not displayed
+        composeTestRule.onNodeWithText("CTY- PIAGGIO - BÌNH XUYÊN 1").assertIsDisplayed()
+        composeTestRule.onNodeWithText("08:00-20:00", substring = true).assertDoesNotExist()
+        composeTestRule.onNodeWithText("Ca:", substring = true).assertDoesNotExist()
+
+        // 2. Job Detail view: shift badge and fallback "Ca làm việc:" line are not displayed
+        selectedDetail = sampleJob
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Mã việc làm: cty-piaggio-binh-xuyen-1-0-23f5f452").assertIsDisplayed()
+        composeTestRule.onNodeWithText("08:00-20:00", substring = true).assertDoesNotExist()
+        composeTestRule.onNodeWithText("Ca làm việc", substring = true).assertDoesNotExist()
+    }
 }

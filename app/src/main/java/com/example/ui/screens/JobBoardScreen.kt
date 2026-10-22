@@ -23,7 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Apartment
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
@@ -303,7 +302,7 @@ private fun JobCardItem(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Location & Shift
+            // Location
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -318,19 +317,6 @@ private fun JobCardItem(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(job.industrialZone, color = HrpTextSecondary, fontSize = 12.sp)
-                }
-
-                if (!job.shift.isNullOrBlank()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.AccessTime,
-                            contentDescription = null,
-                            tint = HrpTextSecondary,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(job.shift, color = HrpTextSecondary, fontSize = 12.sp)
-                    }
                 }
             }
 
@@ -556,7 +542,7 @@ private fun JobDetailView(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Meta badges (Location, Shift, JobType)
+                        // Meta badges (Location, JobType)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -565,12 +551,6 @@ private fun JobDetailView(
                                 icon = Icons.Default.LocationOn,
                                 text = job.industrialZone
                             )
-                            if (!job.shift.isNullOrBlank()) {
-                                MetaBadgeChip(
-                                    icon = Icons.Default.AccessTime,
-                                    text = job.shift
-                                )
-                            }
                             MetaBadgeChip(
                                 icon = Icons.Default.Work,
                                 text = job.jobTypeLabel.ifBlank { "Toàn thời gian" }
@@ -667,9 +647,6 @@ private fun JobDetailView(
                     buildString {
                         append("• Vị trí tuyển dụng: ${job.position?.takeIf { it.isNotBlank() } ?: job.title}\n")
                         append("• Khu vực làm việc: ${job.industrialZone}\n")
-                        if (!job.shift.isNullOrBlank()) {
-                            append("• Ca làm việc: ${job.shift}\n")
-                        }
                         append("• Mức thu nhập: ${job.salaryRange}")
                     }
                 }

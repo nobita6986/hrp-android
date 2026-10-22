@@ -466,6 +466,7 @@ class HrpNetworkAndAuthTest {
         assertEquals("Toàn thời gian", baseJob.jobTypeLabel)
         assertEquals("31/10/2026", baseJob.deadlineDisplay)
         assertFalse(baseJob.isDetailLoaded)
+        assertFalse(baseJob.benefits.any { it.contains("Ca:") || it.contains("08:00-20:00") })
 
         val sampleHtml = """
             <dl class="mt-5 grid gap-3 sm:grid-cols-3">
