@@ -44,6 +44,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -56,12 +57,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.model.TicketType
 import com.example.ui.components.ApplyJobModal
@@ -112,6 +116,20 @@ fun MainAppHost(
     val loginErrorMessage by viewModel.loginErrorMessage.collectAsState()
 
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Always open Tổng quan (HOME) with the Check-In button whenever the user enters the app while logged in
+    DisposableEffect(lifecycleOwner, isLoggedIn) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START && isLoggedIn) {
+                viewModel.onAppEntered()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // Request notification permission on Android 13+ (API 33)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -492,9 +510,9 @@ fun AuthRequiredTabGate(
 ) {
     val featureDescription = when (tab) {
         NavigationTab.HOME ->
-            "Đăng nhập tài khoản Người lao động HRP để xem hồ sơ cá nhân, trạng thái phân công dự án và tổng quan công việc."
+            "Đăng nhập tài khoản Người lao động HRP để thực hiện chấm công GPS, xem hồ sơ cá nhân và trạng thái phân công dự án."
         NavigationTab.ATTENDANCE ->
-            "Đăng nhập tài khoản để thực hiện chấm công Vào ca / Tan ca qua định vị GPS và theo dõi lịch sử chấm công."
+            "Đăng nhập tài khoản để xem chi tiết bảng công, số giờ làm việc thực tế và lịch sử chấm công GPS."
         NavigationTab.FEEDBACK ->
             "Đăng nhập và xác thực số điện thoại để gửi góp ý, phản ánh hoặc yêu cầu hỗ trợ tới bộ phận nhân sự HR."
         NavigationTab.REFERRAL ->

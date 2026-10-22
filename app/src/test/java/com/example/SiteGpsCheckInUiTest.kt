@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.example.data.model.VerificationStatus
 import com.example.data.model.WorkerProfile
@@ -114,7 +115,7 @@ class SiteGpsCheckInUiTest {
     }
 
     @Test
-    fun `RewardAttendancePolicy 6h-12h-20h button states work accurately on HomeScreen`() {
+    fun `RewardAttendancePolicy 6h-12h-20h unified single button states work accurately on HomeScreen`() {
         val readyProfile = piaggioWaitingSiteGpsProfile.copy(
             canCheckIn = true,
             hasConfiguredSiteGps = true,
@@ -125,6 +126,8 @@ class SiteGpsCheckInUiTest {
 
         var currentNowMs by androidx.compose.runtime.mutableLongStateOf(checkInTimeMs + 2L * hourMs)
         var currentCheckOutMs by androidx.compose.runtime.mutableLongStateOf(0L)
+        var checkInCount = 0
+        var checkOutCount = 0
 
         composeTestRule.setContent {
             HomeScreen(
@@ -132,8 +135,8 @@ class SiteGpsCheckInUiTest {
                 attendanceList = emptyList(),
                 tickets = emptyList(),
                 onNavigateTab = {},
-                onCheckIn = {},
-                onCheckOut = {},
+                onCheckIn = { checkInCount += 1 },
+                onCheckOut = { checkOutCount += 1 },
                 onRequestAdvanceSalary = {},
                 onCreateTicket = {},
                 lastCheckInEpochMs = checkInTimeMs,
@@ -142,34 +145,39 @@ class SiteGpsCheckInUiTest {
             )
         }
 
-        // 1. At +2h after check-in (< 6h): BOTH buttons disabled
-        composeTestRule.onNodeWithTag("button_check_in").assertIsNotEnabled()
-        composeTestRule.onNodeWithTag("button_check_out").assertIsNotEnabled()
+        // 1. At +2h after check-in (< 6h): Unified button is disabled ("ĐANG TRONG CA")
+        composeTestRule.onNodeWithTag("button_unified_attendance").assertIsNotEnabled()
+        composeTestRule.onNodeWithText("ĐANG TRONG CA").assertIsDisplayed()
 
-        // 2. At +7h after check-in (between 6h and 12h): Check-In disabled, Check-Out enabled
+        // 2. At +7h after check-in (between 6h and 12h): Unified button is enabled for Check-Out ("TAN CA")
         currentNowMs = checkInTimeMs + 7L * hourMs
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("button_check_in").assertIsNotEnabled()
-        composeTestRule.onNodeWithTag("button_check_out").assertIsEnabled()
+        composeTestRule.onNodeWithTag("button_unified_attendance").assertIsEnabled()
+        composeTestRule.onNodeWithText("TAN CA").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("button_unified_attendance").performClick()
+        org.junit.Assert.assertEquals(1, checkOutCount)
+        org.junit.Assert.assertEquals(0, checkInCount)
 
-        // 3. At +13h after check-in WITHOUT check-out (> 12h): shift not recorded, BOTH buttons enabled
+        // 3. At +13h after check-in WITHOUT check-out (> 12h): shift not recorded, unified button re-enabled for new Check-In ("VÀO CA")
         currentNowMs = checkInTimeMs + 13L * hourMs
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("button_check_in").assertIsEnabled()
-        composeTestRule.onNodeWithTag("button_check_out").assertIsEnabled()
+        composeTestRule.onNodeWithTag("button_unified_attendance").assertIsEnabled()
+        composeTestRule.onNodeWithText("VÀO CA").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("button_unified_attendance").performClick()
+        org.junit.Assert.assertEquals(1, checkInCount)
 
-        // 4. When checked out validly at +8h, and now is +15h (< 20h): both buttons disabled
+        // 4. When checked out validly at +8h, and now is +15h (< 20h): Unified button is disabled ("ĐÃ HOÀN TẤT")
         currentCheckOutMs = checkInTimeMs + 8L * hourMs
         currentNowMs = checkInTimeMs + 15L * hourMs
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("button_check_in").assertIsNotEnabled()
-        composeTestRule.onNodeWithTag("button_check_out").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("button_unified_attendance").assertIsNotEnabled()
+        composeTestRule.onNodeWithText("ĐÃ HOÀN TẤT").assertIsDisplayed()
 
-        // 5. At +20h since check-in: Check-In button re-enabled for next shift
+        // 5. At +20h since check-in: Unified button is re-enabled for next shift Check-In ("VÀO CA")
         currentNowMs = checkInTimeMs + 20L * hourMs
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("button_check_in").assertIsEnabled()
-        composeTestRule.onNodeWithTag("button_check_out").assertIsNotEnabled()
+        composeTestRule.onNodeWithTag("button_unified_attendance").assertIsEnabled()
+        composeTestRule.onNodeWithText("VÀO CA").assertIsDisplayed()
     }
 
     @Test
@@ -186,7 +194,7 @@ class SiteGpsCheckInUiTest {
         }
 
         composeTestRule.onNodeWithText("Tính Năng Yêu Cầu Đăng Nhập").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Mục \"Chấm công\" chỉ khả dụng sau khi đăng nhập").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Mục \"Bảng công\" chỉ khả dụng sau khi đăng nhập").assertIsDisplayed()
         composeTestRule.onNodeWithTag("gate_open_login_button").assertIsDisplayed()
         composeTestRule.onNodeWithTag("gate_back_to_jobs_button").assertIsDisplayed()
     }

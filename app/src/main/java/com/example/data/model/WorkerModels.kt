@@ -111,10 +111,30 @@ enum class CheckInPhase {
     COMPLETED_WAIT_20H
 }
 
+enum class AttendancePrimaryAction {
+    CHECK_IN,
+    CHECK_OUT,
+    NONE
+}
+
 data class CheckInGateState(
     val isCheckInEnabled: Boolean,
     val isCheckOutEnabled: Boolean,
     val phase: CheckInPhase,
+    val primaryAction: AttendancePrimaryAction = when {
+        phase == CheckInPhase.WINDOW_OPEN_6H_TO_12H -> AttendancePrimaryAction.CHECK_OUT
+        isCheckInEnabled -> AttendancePrimaryAction.CHECK_IN
+        isCheckOutEnabled -> AttendancePrimaryAction.CHECK_OUT
+        else -> AttendancePrimaryAction.NONE
+    },
+    val isPrimaryButtonEnabled: Boolean = isCheckInEnabled || isCheckOutEnabled,
+    val buttonTitle: String = when (phase) {
+        CheckInPhase.IDLE_READY, CheckInPhase.EXPIRED_OVER_12H_UNCLOSED -> "VÀO CA"
+        CheckInPhase.WAITING_MIN_6H -> "ĐANG TRONG CA"
+        CheckInPhase.WINDOW_OPEN_6H_TO_12H -> "TAN CA"
+        CheckInPhase.COMPLETED_WAIT_20H -> "ĐÃ HOÀN TẤT"
+    },
+    val buttonSubtitle: String = "Chấm công GPS",
     val statusHint: String? = null
 )
 
@@ -243,6 +263,10 @@ object RewardAttendancePolicy {
                 isCheckInEnabled = true,
                 isCheckOutEnabled = false,
                 phase = CheckInPhase.IDLE_READY,
+                primaryAction = AttendancePrimaryAction.CHECK_IN,
+                isPrimaryButtonEnabled = true,
+                buttonTitle = "VÀO CA",
+                buttonSubtitle = "Chấm công GPS",
                 statusHint = null
             )
         }
@@ -255,17 +279,26 @@ object RewardAttendancePolicy {
             val isValidShift = shiftDurationMs in MIN_CHECKOUT_DELAY_MS..MAX_CHECKOUT_DELAY_MS
             if (isValidShift && elapsedSinceCheckInMs < NEXT_CHECKIN_COOLDOWN_MS) {
                 val remainingTo20h = NEXT_CHECKIN_COOLDOWN_MS - elapsedSinceCheckInMs
+                val waitText = formatDurationText(remainingTo20h)
                 return CheckInGateState(
                     isCheckInEnabled = false,
                     isCheckOutEnabled = false,
                     phase = CheckInPhase.COMPLETED_WAIT_20H,
-                    statusHint = "Đã hoàn tất ca chấm công hôm nay. Nút Vào Ca sẽ mở lại sau ${formatDurationText(remainingTo20h)} (đủ 20h kể từ lúc Vào ca)."
+                    primaryAction = AttendancePrimaryAction.NONE,
+                    isPrimaryButtonEnabled = false,
+                    buttonTitle = "ĐÃ HOÀN TẤT",
+                    buttonSubtitle = "Mở lại sau $waitText",
+                    statusHint = "Đã hoàn tất ca chấm công hôm nay. Nút Chấm công Vào Ca sẽ mở lại sau $waitText (đủ 20h kể từ lúc Vào ca)."
                 )
             }
             return CheckInGateState(
                 isCheckInEnabled = true,
                 isCheckOutEnabled = false,
                 phase = CheckInPhase.IDLE_READY,
+                primaryAction = AttendancePrimaryAction.CHECK_IN,
+                isPrimaryButtonEnabled = true,
+                buttonTitle = "VÀO CA",
+                buttonSubtitle = "Chấm công GPS",
                 statusHint = if (!isValidShift) {
                     "Lần chấm trước chưa đủ tối thiểu 6h làm việc nên không được ghi nhận."
                 } else {
@@ -278,29 +311,43 @@ object RewardAttendancePolicy {
         return when {
             elapsedSinceCheckInMs < MIN_CHECKOUT_DELAY_MS -> {
                 val remainingTo6h = MIN_CHECKOUT_DELAY_MS - elapsedSinceCheckInMs
+                val waitText = formatDurationText(remainingTo6h)
                 CheckInGateState(
                     isCheckInEnabled = false,
                     isCheckOutEnabled = false,
                     phase = CheckInPhase.WAITING_MIN_6H,
-                    statusHint = "Đã ghi nhận Vào ca. Cả 2 nút tạm khóa — nút Tan Ca sẽ mở sau ${formatDurationText(remainingTo6h)} (vào/ra cách nhau 6h–12h)."
+                    primaryAction = AttendancePrimaryAction.NONE,
+                    isPrimaryButtonEnabled = false,
+                    buttonTitle = "ĐANG TRONG CA",
+                    buttonSubtitle = "Mở Tan ca sau $waitText",
+                    statusHint = "Đã ghi nhận Vào ca. Nút chấm công tạm khóa — bạn có thể bấm Tan Ca sau $waitText (vào/ra cách nhau 6h–12h)."
                 )
             }
             elapsedSinceCheckInMs <= MAX_CHECKOUT_DELAY_MS -> {
                 val remainingTo12h = MAX_CHECKOUT_DELAY_MS - elapsedSinceCheckInMs
+                val windowText = formatDurationText(remainingTo12h)
                 CheckInGateState(
                     isCheckInEnabled = false,
                     isCheckOutEnabled = true,
                     phase = CheckInPhase.WINDOW_OPEN_6H_TO_12H,
-                    statusHint = "Đã đủ 6h làm việc! Hãy bấm Tan Ca trong vòng ${formatDurationText(remainingTo12h)} nữa (quá 12h không bấm Tan ca sẽ không được ghi nhận)."
+                    primaryAction = AttendancePrimaryAction.CHECK_OUT,
+                    isPrimaryButtonEnabled = true,
+                    buttonTitle = "TAN CA",
+                    buttonSubtitle = "Còn $windowText để bấm",
+                    statusHint = "Đã đủ 6h làm việc! Hãy bấm Tan Ca trong vòng $windowText nữa (quá 12h không bấm Tan ca sẽ không được ghi nhận)."
                 )
             }
             else -> {
-                // Over 12h without checking out: shift is NOT recorded, re-open both buttons
+                // Over 12h without checking out: shift is NOT recorded, re-open button for a new Check-In
                 CheckInGateState(
                     isCheckInEnabled = true,
                     isCheckOutEnabled = true,
                     phase = CheckInPhase.EXPIRED_OVER_12H_UNCLOSED,
-                    statusHint = "Ca trước đã quá 12h không bấm Tan ca nên không được ghi nhận. Đã mở lại nút để chấm công ca mới."
+                    primaryAction = AttendancePrimaryAction.CHECK_IN,
+                    isPrimaryButtonEnabled = true,
+                    buttonTitle = "VÀO CA",
+                    buttonSubtitle = "Bắt đầu ca mới (GPS)",
+                    statusHint = "Ca trước đã quá 12h không bấm Tan ca nên không được ghi nhận. Đã mở lại nút để chấm công Vào ca mới."
                 )
             }
         }

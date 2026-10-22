@@ -295,7 +295,7 @@ private fun AttendanceSummaryBanner(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "CHẤM CÔNG ĐỊNH VỊ GPS",
+                        text = "BẢNG CÔNG CÁ NHÂN",
                         style = MaterialTheme.typography.labelSmall.copy(
                             color = HrpPrimary,
                             fontWeight = FontWeight.Bold,
@@ -356,66 +356,22 @@ private fun AttendanceSummaryBanner(
             Spacer(modifier = Modifier.height(14.dp))
 
             if (isActionEnabled) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                val hintText = gateState.statusHint
+                    ?: "Thực hiện Chấm công Vào ca / Tan ca tại nút chính giữa màn hình Tổng quan."
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(HrpNavySurface)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .testTag("attendance_cycle_hint")
                 ) {
-                    Button(
-                        onClick = onCheckIn,
-                        enabled = gateState.isCheckInEnabled,
-                        modifier = Modifier
-                            .weight(1f)
-                            .alpha(if (gateState.isCheckInEnabled) 1f else 0.45f)
-                            .testTag("attendance_button_check_in"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = HrpPrimary,
-                            contentColor = Color.White,
-                            disabledContainerColor = HrpPrimary.copy(alpha = 0.35f),
-                            disabledContentColor = Color.White.copy(alpha = 0.6f)
-                        )
-                    ) {
-                        Icon(imageVector = Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Vào Ca (GPS)", fontWeight = FontWeight.Bold)
-                    }
-                    OutlinedButton(
-                        onClick = onCheckOut,
-                        enabled = gateState.isCheckOutEnabled,
-                        modifier = Modifier
-                            .weight(1f)
-                            .alpha(if (gateState.isCheckOutEnabled) 1f else 0.45f)
-                            .testTag("attendance_button_check_out"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color.White,
-                            disabledContentColor = Color.White.copy(alpha = 0.5f)
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (gateState.isCheckOutEnabled) HrpSuccess else Color.White.copy(alpha = 0.25f)
-                        )
-                    ) {
-                        Text("Tan Ca (GPS)", fontWeight = FontWeight.Bold)
-                    }
-                }
-                gateState.statusHint?.let { hint ->
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(HrpNavySurface)
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                            .testTag("attendance_cycle_hint")
-                    ) {
-                        Text(
-                            text = hint,
-                            color = Color.White.copy(alpha = 0.88f),
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        )
-                    }
+                    Text(
+                        text = hintText,
+                        color = Color.White.copy(alpha = 0.88f),
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
                 }
             } else {
                 val lockExplanation = when {

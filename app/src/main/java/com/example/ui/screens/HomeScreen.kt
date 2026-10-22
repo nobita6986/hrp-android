@@ -54,8 +54,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.AttendanceDay
+import com.example.data.model.AttendancePrimaryAction
 import com.example.data.model.AttendanceStatus
 import com.example.data.model.CheckInGateState
+import com.example.data.model.CheckInPhase
 import com.example.data.model.RewardAttendancePolicy
 import com.example.data.model.TicketItem
 import com.example.data.model.TicketType
@@ -156,7 +158,8 @@ fun HomeScreen(
         item {
             WorkerQuickStats(
                 actualWorkDays = approvedDays,
-                otHours = otHours
+                otHours = otHours,
+                onViewTimesheet = { onNavigateTab(NavigationTab.ATTENDANCE) }
             )
         }
 
@@ -470,112 +473,180 @@ private fun WorkerHeroCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // Check-in action bar (strictly gated by mobileAccess.canCheckIn && confirmed Site GPS && 6h-12h-20h rule)
-            if (isActionEnabled) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+            // Unified, centered, enlarged Check-In / Check-Out action button (1 button for both actions)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                val isButtonClickable = isActionEnabled && gateState.isPrimaryButtonEnabled
+                val primaryButtonColor = when {
+                    !isActionEnabled -> HrpNavySurface
+                    gateState.primaryAction == AttendancePrimaryAction.CHECK_OUT -> HrpSuccess
+                    else -> HrpPrimary
+                }
+                val outerRingColor = when {
+                    !isActionEnabled -> badgeColor.copy(alpha = 0.16f)
+                    !gateState.isPrimaryButtonEnabled -> Color.White.copy(alpha = 0.08f)
+                    gateState.primaryAction == AttendancePrimaryAction.CHECK_OUT -> HrpSuccess.copy(alpha = 0.24f)
+                    else -> HrpPrimary.copy(alpha = 0.24f)
+                }
+                val buttonIcon = when {
+                    !isActionEnabled -> Icons.Default.VerifiedUser
+                    gateState.primaryAction == AttendancePrimaryAction.CHECK_OUT -> Icons.Default.AssignmentTurnedIn
+                    gateState.primaryAction == AttendancePrimaryAction.CHECK_IN -> Icons.Default.AccessTime
+                    else -> Icons.Default.Timer
+                }
+                val displayTitle = when {
+                    !isActionEnabled -> "TẠM KHÓA"
+                    else -> gateState.buttonTitle
+                }
+                val displaySubtitle = when {
+                    !isActionEnabled -> if (isWaitingSiteGps) "Chờ xác nhận Site" else "Chưa mở chấm công"
+                    else -> gateState.buttonSubtitle
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(198.dp)
+                        .clip(CircleShape)
+                        .background(outerRingColor),
+                    contentAlignment = Alignment.Center
                 ) {
                     Button(
-                        onClick = onCheckIn,
-                        enabled = gateState.isCheckInEnabled,
+                        onClick = {
+                            when (gateState.primaryAction) {
+                                AttendancePrimaryAction.CHECK_IN -> onCheckIn()
+                                AttendancePrimaryAction.CHECK_OUT -> onCheckOut()
+                                AttendancePrimaryAction.NONE -> {}
+                            }
+                        },
+                        enabled = isButtonClickable,
                         modifier = Modifier
-                            .weight(1f)
-                            .alpha(if (gateState.isCheckInEnabled) 1f else 0.45f)
-                            .testTag("button_check_in"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = HrpPrimary,
-                            contentColor = Color.White,
-                            disabledContainerColor = HrpPrimary.copy(alpha = 0.35f),
-                            disabledContentColor = Color.White.copy(alpha = 0.6f)
-                        )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AccessTime,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Vào Ca (GPS)", fontWeight = FontWeight.Bold)
-                    }
-
-                    OutlinedButton(
-                        onClick = onCheckOut,
-                        enabled = gateState.isCheckOutEnabled,
-                        modifier = Modifier
-                            .weight(1f)
-                            .alpha(if (gateState.isCheckOutEnabled) 1f else 0.45f)
-                            .testTag("button_check_out"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = Color.White,
-                            disabledContentColor = Color.White.copy(alpha = 0.5f)
+                            .size(176.dp)
+                            .alpha(if (isButtonClickable) 1f else 0.45f)
+                            .testTag("button_unified_attendance"),
+                        shape = CircleShape,
+                        elevation = ButtonDefaults.buttonElevation(
+                            defaultElevation = 8.dp,
+                            pressedElevation = 2.dp,
+                            disabledElevation = 0.dp
                         ),
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (gateState.isCheckOutEnabled) HrpSuccess else Color.White.copy(alpha = 0.25f)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = primaryButtonColor,
+                            contentColor = Color.White,
+                            disabledContainerColor = primaryButtonColor.copy(alpha = 0.5f),
+                            disabledContentColor = Color.White.copy(alpha = 0.75f)
                         )
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.AssignmentTurnedIn,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Tan Ca (GPS)", fontWeight = FontWeight.Bold)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = buttonIcon,
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = displayTitle,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 18.sp,
+                                    color = Color.White,
+                                    letterSpacing = 0.5.sp
+                                ),
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = displaySubtitle,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 11.sp,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                ),
+                                textAlign = TextAlign.Center,
+                                maxLines = 2
+                            )
+                        }
                     }
                 }
-                gateState.statusHint?.let { hint ->
-                    Spacer(modifier = Modifier.height(10.dp))
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (isActionEnabled) {
+                    val phaseLabel = when (gateState.phase) {
+                        CheckInPhase.IDLE_READY -> "Sẵn sàng bấm Vào Ca (GPS)"
+                        CheckInPhase.WAITING_MIN_6H -> "Đang trong ca làm việc (tối thiểu 6h)"
+                        CheckInPhase.WINDOW_OPEN_6H_TO_12H -> "Sẵn sàng bấm Tan Ca (khung 6h–12h)"
+                        CheckInPhase.EXPIRED_OVER_12H_UNCLOSED -> "Sẵn sàng bấm Vào Ca mới (ca trước quá 12h)"
+                        CheckInPhase.COMPLETED_WAIT_20H -> "Đã hoàn tất ca chấm công trong ngày"
+                    }
+                    Text(
+                        text = phaseLabel,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            color = if (gateState.primaryAction == AttendancePrimaryAction.CHECK_OUT) HrpSuccess else Color.White.copy(alpha = 0.9f),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        ),
+                        textAlign = TextAlign.Center
+                    )
+
+                    gateState.statusHint?.let { hint ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(HrpNavySurface)
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                .testTag("check_in_cycle_hint")
+                        ) {
+                            Text(
+                                text = hint,
+                                color = Color.White.copy(alpha = 0.88f),
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                } else {
+                    val lockReasonText = when {
+                        isWaitingSiteGps -> "Tạm khóa chấm công: Site dự án chưa được Admin xác nhận tọa độ GPS"
+                        hasActiveAssignment && !canCheckIn -> "Tạm khóa chấm công: Hồ sơ đang chờ hoàn tất kích hoạt chấm công"
+                        else -> "Chấm công bị khóa: Tài khoản cần được Admin liên kết và có phân công ACTIVE"
+                    }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(HrpNavySurface)
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                            .testTag("check_in_cycle_hint")
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .testTag("check_in_locked_notice"),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = hint,
-                            color = Color.White.copy(alpha = 0.88f),
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        )
-                    }
-                }
-            } else {
-                val lockReasonText = when {
-                    isWaitingSiteGps -> "Tạm khóa chấm công: Site dự án chưa được Admin xác nhận tọa độ GPS"
-                    hasActiveAssignment && !canCheckIn -> "Tạm khóa chấm công: Hồ sơ đang chờ hoàn tất kích hoạt chấm công"
-                    else -> "Chấm công bị khóa: Tài khoản cần được Admin liên kết và có phân công ACTIVE"
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(HrpNavySurface)
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
-                        .testTag("check_in_locked_notice"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.VerifiedUser,
-                            contentDescription = null,
-                            tint = badgeColor,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = lockReasonText,
-                            color = Color.White.copy(alpha = 0.9f),
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.VerifiedUser,
+                                contentDescription = null,
+                                tint = badgeColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = lockReasonText,
+                                color = Color.White.copy(alpha = 0.9f),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
+                            )
+                        }
                     }
                 }
             }
@@ -586,19 +657,36 @@ private fun WorkerHeroCard(
 @Composable
 private fun WorkerQuickStats(
     actualWorkDays: Double,
-    otHours: Double
+    otHours: Double,
+    onViewTimesheet: () -> Unit = {}
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onViewTimesheet() },
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = HrpSurface),
         border = androidx.compose.foundation.BorderStroke(1.dp, HrpSurfaceBorder)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Text(
-                text = "Bảng Công Tóm Tắt",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Bảng Công Tóm Tắt",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = "Xem Bảng công →",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = HrpPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp
+                    )
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 

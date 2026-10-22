@@ -60,7 +60,7 @@ fun HrpBottomBar(
         val items = listOf(
             Triple(NavigationTab.HOME, "Tổng quan", Icons.Default.Dashboard),
             Triple(NavigationTab.JOBS, "Việc làm", Icons.Default.WorkOutline),
-            Triple(NavigationTab.ATTENDANCE, "Chấm công", Icons.Default.CalendarMonth),
+            Triple(NavigationTab.ATTENDANCE, "Bảng công", Icons.Default.CalendarMonth),
             Triple(NavigationTab.FEEDBACK, "Góp ý", Icons.Default.Assignment),
             Triple(NavigationTab.REFERRAL, "Giới thiệu", Icons.Default.Share)
         )

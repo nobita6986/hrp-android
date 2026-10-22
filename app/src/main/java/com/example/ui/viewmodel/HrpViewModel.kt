@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
 enum class NavigationTab(val label: String) {
     HOME("Tổng quan"),
     JOBS("Việc làm"),
-    ATTENDANCE("Chấm công"),
+    ATTENDANCE("Bảng công"),
     FEEDBACK("Góp ý"),
     REFERRAL("Giới thiệu")
 }
@@ -140,6 +140,7 @@ class HrpViewModel(
     init {
         repository.initServices(application)
         if (_isLoggedIn.value) {
+            _currentTab.value = NavigationTab.HOME
             viewModelScope.launch {
                 repository.loadInitialData()
             }
@@ -147,6 +148,24 @@ class HrpViewModel(
             _currentTab.value = NavigationTab.JOBS
             viewModelScope.launch {
                 repository.fetchJobs()
+            }
+        }
+    }
+
+    /**
+     * Ensures that whenever a logged-in user enters/re-opens the app,
+     * the Overview (Tổng quan) screen with the unified Check-in button is shown first.
+     */
+    fun onAppEntered() {
+        if (_isLoggedIn.value) {
+            _selectedJobDetail.value = null
+            _isLoadingJobDetail.value = false
+            _currentTab.value = NavigationTab.HOME
+            viewModelScope.launch {
+                repository.fetchProfile()
+                if (workerProfile.value.canCheckIn || workerProfile.value.hasActiveAssignment) {
+                    repository.fetchAttendance()
+                }
             }
         }
     }
