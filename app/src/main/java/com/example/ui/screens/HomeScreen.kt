@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.AssignmentTurnedIn
 import androidx.compose.material.icons.filled.DateRange
@@ -94,6 +95,7 @@ fun HomeScreen(
     onCreateTicket: (TicketType) -> Unit,
     onOpenPhoneOtp: () -> Unit = {},
     onOpenWorkerVerification: () -> Unit = {},
+    onLogout: () -> Unit = {},
     lastCheckInEpochMs: Long = 0L,
     lastCheckOutEpochMs: Long = 0L,
     nowEpochMsOverride: Long? = null,
@@ -127,7 +129,8 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .background(HrpBackground)
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp)
+            .testTag("home_lazy_column"),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item { Spacer(modifier = Modifier.height(4.dp)) }
@@ -193,6 +196,39 @@ fun HomeScreen(
                 tickets = tickets.take(3),
                 onViewAll = { onNavigateTab(NavigationTab.FEEDBACK) }
             )
+        }
+
+        // Logout button at the bottom of the Tổng quan (Home) screen
+        item {
+            OutlinedButton(
+                onClick = onLogout,
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, HrpError.copy(alpha = 0.45f)),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = HrpSurface,
+                    contentColor = HrpError
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("button_logout")
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Logout,
+                    contentDescription = "Đăng xuất",
+                    tint = HrpError,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Đăng Xuất Tài Khoản",
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = HrpError,
+                        fontSize = 14.sp
+                    )
+                )
+            }
         }
 
         item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -370,40 +406,6 @@ private fun WorkerHeroCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Phone & OTP verification status badge (authenticated users have verified OTP)
-            val phoneDisplay = profile.phone.ifBlank { "Chưa cập nhật SĐT" }
-            val otpStatusText = "SĐT: $phoneDisplay • Đã xác minh OTP"
-            val otpStatusColor = HrpSuccess
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(HrpNavySurface)
-                    .padding(horizontal = 12.dp, vertical = 7.dp)
-                    .testTag("home_phone_verification_badge"),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PhoneAndroid,
-                    contentDescription = null,
-                    tint = otpStatusColor,
-                    modifier = Modifier.size(15.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = otpStatusText,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = otpStatusColor,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 11.sp
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
             // Factory / Assignment badge
             Row(
                 modifier = Modifier
@@ -533,47 +535,8 @@ private fun WorkerHeroCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                if (isActionEnabled) {
-                    val phaseLabel = when (gateState.phase) {
-                        CheckInPhase.IDLE_READY -> "Sẵn sàng bấm Vào Ca (GPS)"
-                        CheckInPhase.WAITING_MIN_6H -> "Đang trong ca làm việc (tối thiểu 6h)"
-                        CheckInPhase.WINDOW_OPEN_6H_TO_12H -> "Sẵn sàng bấm Tan Ca (khung 6h–12h)"
-                        CheckInPhase.EXPIRED_OVER_12H_UNCLOSED -> "Sẵn sàng bấm Vào Ca mới (ca trước quá 12h)"
-                        CheckInPhase.COMPLETED_WAIT_20H -> "Đã hoàn tất ca chấm công trong ngày"
-                    }
-                    Text(
-                        text = phaseLabel,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            color = if (gateState.primaryAction == AttendancePrimaryAction.CHECK_OUT) HrpSuccess else Color.White.copy(alpha = 0.9f),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        ),
-                        textAlign = TextAlign.Center
-                    )
-
-                    gateState.statusHint?.let { hint ->
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(HrpNavySurface)
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                                .testTag("check_in_cycle_hint")
-                        ) {
-                            Text(
-                                text = hint,
-                                color = Color.White.copy(alpha = 0.88f),
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                } else {
+                if (!isActionEnabled) {
+                    Spacer(modifier = Modifier.height(14.dp))
                     val lockReasonText = when {
                         isWaitingSiteGps -> "Tạm khóa chấm công: Site dự án chưa được Admin xác nhận tọa độ GPS"
                         hasActiveAssignment && !canCheckIn -> "Tạm khóa chấm công: Hồ sơ đang chờ hoàn tất kích hoạt chấm công"

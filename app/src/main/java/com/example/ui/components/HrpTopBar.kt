@@ -85,34 +85,16 @@ fun HrpTopBar(
                 Spacer(modifier = Modifier.width(10.dp))
 
                 Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "HR Partner",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                color = HrpNavyDark,
-                                fontSize = 17.sp
-                            )
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(HrpPrimary)
-                                .padding(horizontal = 5.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = "ERP V4",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 9.sp
-                                )
-                            )
-                        }
-                    }
                     Text(
-                        text = "Workforce Ecosystem",
+                        text = "HRPartner",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            color = HrpNavyDark,
+                            fontSize = 17.sp
+                        )
+                    )
+                    Text(
+                        text = "Hệ sinh thái Nhân sự & Lao động",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = HrpTextSecondary,
                             fontSize = 11.sp
@@ -121,37 +103,8 @@ fun HrpTopBar(
                 }
             }
 
-            // Auth Action (Logout when logged in, Login when browsing as guest)
-            if (isLoggedIn && onLogout != null) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = HrpPrimarySoft,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, HrpPrimary.copy(alpha = 0.2f)),
-                    modifier = Modifier
-                        .testTag("button_logout")
-                        .clickable { onLogout() }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Logout,
-                            contentDescription = "Đăng xuất",
-                            tint = HrpPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Đăng xuất",
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                color = HrpPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        )
-                    }
-                }
-            } else if (!isLoggedIn && onLoginClick != null) {
+            // Auth Action (Login button when browsing as guest; Logout is placed at the bottom of HomeScreen)
+            if (!isLoggedIn && onLoginClick != null) {
                 Surface(
                     shape = RoundedCornerShape(20.dp),
                     color = HrpPrimary,

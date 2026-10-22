@@ -571,7 +571,6 @@ class HrpViewModel(
             )
 
             result.onSuccess {
-                _showCheckInSuccessDialog.value = true
                 val accuracyInfo = if (accuracy != null) " (Sai số GPS: ±%.1fm)".format(accuracy) else ""
                 _toastMessage.value = "Chấm công vào ca thành công qua GPS!$accuracyInfo"
             }.onFailure {

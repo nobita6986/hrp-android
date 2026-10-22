@@ -135,7 +135,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "HR PARTNER",
+                text = "HRPartner",
                 style = MaterialTheme.typography.headlineSmall.copy(
                     fontWeight = FontWeight.ExtraBold,
                     color = HrpNavyDark,

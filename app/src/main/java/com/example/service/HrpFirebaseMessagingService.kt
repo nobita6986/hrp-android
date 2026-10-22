@@ -70,7 +70,7 @@ class HrpFirebaseMessagingService : FirebaseMessagingService() {
 
         val title = remoteMessage.notification?.title
             ?: remoteMessage.data["title"]
-            ?: "HR Partner Thông Báo"
+            ?: "HRPartner Thông Báo"
 
         val body = remoteMessage.notification?.body
             ?: remoteMessage.data["body"]

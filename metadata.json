@@ -1,5 +1,5 @@
 {
-  "name": "HR Partner",
+  "name": "HRPartner",
   "description": "Hệ sinh thái Quản trị Nhân sự & Lao động Số HRP - Chấm công, Phiếu lương Gross-to-Net, Phân bổ ca kíp, Ban Giám đốc & CTV",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

@@ -239,7 +239,10 @@ fun HrpApp(
 
     LaunchedEffect(toastMessage) {
         toastMessage?.let {
-            snackbarHostState.showSnackbar(it)
+            snackbarHostState.showSnackbar(
+                message = it,
+                duration = androidx.compose.material3.SnackbarDuration.Short
+            )
             viewModel.clearToast()
         }
     }
@@ -363,6 +366,7 @@ fun HrpApp(
                                 onCreateTicket = { viewModel.setCreateTicketDialogVisible(true) },
                                 onOpenPhoneOtp = { viewModel.setPhoneOtpDialogVisible(true) },
                                 onOpenWorkerVerification = { viewModel.setWorkerVerificationDialogVisible(true) },
+                                onLogout = { viewModel.logout() },
                                 lastCheckInEpochMs = lastCheckInEpochMs,
                                 lastCheckOutEpochMs = lastCheckOutEpochMs
                             )
@@ -466,13 +470,6 @@ fun HrpApp(
             },
             onOpenPhoneOtp = { viewModel.setPhoneOtpDialogVisible(true) },
             onDismiss = { viewModel.setAdvanceSalaryDialogVisible(false) }
-        )
-    }
-
-    if (isLoggedIn && showCheckInSuccessDialog) {
-        CheckInSuccessModal(
-            gpsInfo = lastGpsCheckIn,
-            onDismiss = { viewModel.setCheckInSuccessVisible(false) }
         )
     }
 

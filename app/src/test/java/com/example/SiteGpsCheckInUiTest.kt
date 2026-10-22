@@ -6,11 +6,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import com.example.data.model.VerificationStatus
 import com.example.data.model.WorkerProfile
 import com.example.ui.screens.AttendanceScreen
@@ -178,6 +180,14 @@ class SiteGpsCheckInUiTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("button_unified_attendance").assertIsEnabled()
         composeTestRule.onNodeWithText("VÀO CA").assertIsDisplayed()
+
+        // 6. Phone row ("SĐT: ...") and check-in cycle hint below the circular button are removed for a clean layout
+        composeTestRule.onNodeWithTag("home_phone_verification_badge").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("check_in_cycle_hint").assertDoesNotExist()
+
+        // 7. Logout button is placed at the bottom of HomeScreen
+        composeTestRule.onNodeWithTag("home_lazy_column").performScrollToNode(hasTestTag("button_logout"))
+        composeTestRule.onNodeWithTag("button_logout").assertIsDisplayed()
     }
 
     @Test
