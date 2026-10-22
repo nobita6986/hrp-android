@@ -140,7 +140,6 @@ fun AttendanceScreen(
                 totalDays = attendanceList.size,
                 approvedDays = attendanceList.count { it.status == AttendanceStatus.APPROVED },
                 totalStandardHours = totalStandardHours,
-                totalOtHours = attendanceList.sumOf { it.otHours },
                 onCheckIn = onCheckIn,
                 onCheckOut = onCheckOut
             )
@@ -257,26 +256,23 @@ private fun AttendanceSummaryBanner(
     totalDays: Int,
     approvedDays: Int,
     totalStandardHours: Double,
-    totalOtHours: Double,
     onCheckIn: () -> Unit,
     onCheckOut: () -> Unit
 ) {
     val isActionEnabled = canCheckIn && isSiteGpsReady
     val isWaitingSiteGps = hasActiveAssignment && !isSiteGpsReady
     val badgeBg = when {
-        isActionEnabled -> HrpSuccess.copy(alpha = 0.2f)
         isWaitingSiteGps -> HrpError.copy(alpha = 0.2f)
         hasActiveAssignment && !canCheckIn -> HrpWarning.copy(alpha = 0.2f)
         else -> HrpWarning.copy(alpha = 0.2f)
     }
     val badgeColor = when {
-        isActionEnabled -> HrpSuccess
         isWaitingSiteGps -> HrpError
         hasActiveAssignment && !canCheckIn -> HrpWarning
         else -> HrpWarning
     }
-    val badgeLabel = when {
-        isActionEnabled -> "ĐỦ ĐIỀU KIỆN"
+    val badgeLabel: String? = when {
+        isActionEnabled -> null
         isWaitingSiteGps -> "CHỜ XÁC NHẬN SITE"
         hasActiveAssignment && !canCheckIn -> "ĐÃ PHÂN CÔNG"
         else -> "CHƯA MỞ QUYỀN"
@@ -313,43 +309,41 @@ private fun AttendanceSummaryBanner(
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(badgeBg)
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = badgeLabel,
-                        color = badgeColor,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp
-                    )
+                if (badgeLabel != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(badgeBg)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = badgeLabel,
+                            color = badgeColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 3 stats row
+            // 2 stats row (Days & Standard Hours; OT removed as app does not manage OT)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(HrpNavySurface)
                     .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceAround
             ) {
-                Column {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Số ngày công", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
                     Text("$approvedDays / $totalDays", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
-                Column {
-                    Text("Giờ chuẩn", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Giờ ghi nhận", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
                     Text("${totalStandardHours}h", color = HrpSuccess, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                }
-                Column {
-                    Text("Tăng ca (OT)", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
-                    Text("${totalOtHours}h", color = HrpWarning, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 }
             }
 
@@ -502,16 +496,6 @@ private fun AttendanceCardItem(
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = if (day.status == AttendanceStatus.APPROVED && day.standardHours > 0.0) HrpSuccess else HrpTextSecondary
-                        )
-                    )
-                }
-                Column {
-                    Text("Tăng ca OT", style = MaterialTheme.typography.bodySmall.copy(color = HrpTextSecondary, fontSize = 11.sp))
-                    Text(
-                        text = "${day.otHours}h",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = if (day.otHours > 0) HrpWarning else HrpTextSecondary
                         )
                     )
                 }

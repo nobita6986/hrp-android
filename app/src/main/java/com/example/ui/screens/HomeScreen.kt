@@ -161,7 +161,6 @@ fun HomeScreen(
         item {
             WorkerQuickStats(
                 actualWorkDays = approvedDays,
-                otHours = otHours,
                 onViewTimesheet = { onNavigateTab(NavigationTab.ATTENDANCE) }
             )
         }
@@ -322,19 +321,17 @@ private fun WorkerHeroCard(
     val isWaitingSiteGps = hasActiveAssignment && !isSiteGpsReady
 
     val badgeBg = when {
-        isActionEnabled -> HrpSuccess.copy(alpha = 0.2f)
         isWaitingSiteGps -> HrpError.copy(alpha = 0.2f)
         hasActiveAssignment && !canCheckIn -> HrpWarning.copy(alpha = 0.2f)
         else -> HrpWarning.copy(alpha = 0.2f)
     }
     val badgeColor = when {
-        isActionEnabled -> HrpSuccess
         isWaitingSiteGps -> HrpError
         hasActiveAssignment && !canCheckIn -> HrpWarning
         else -> HrpWarning
     }
-    val badgeLabel = when {
-        isActionEnabled -> "ĐỦ ĐIỀU KIỆN"
+    val badgeLabel: String? = when {
+        isActionEnabled -> null
         isWaitingSiteGps -> "CHỜ XÁC NHẬN SITE"
         hasActiveAssignment && !canCheckIn -> "ĐÃ PHÂN CÔNG"
         else -> "CHƯA PHÂN CÔNG"
@@ -389,18 +386,20 @@ private fun WorkerHeroCard(
                         )
                     )
                 }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(badgeBg)
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = badgeLabel,
-                        color = badgeColor,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp
-                    )
+                if (badgeLabel != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(badgeBg)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = badgeLabel,
+                            color = badgeColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp
+                        )
+                    }
                 }
             }
 
@@ -468,7 +467,7 @@ private fun WorkerHeroCard(
 
                 Box(
                     modifier = Modifier
-                        .size(198.dp)
+                        .size(242.dp)
                         .clip(CircleShape)
                         .background(outerRingColor),
                     contentAlignment = Alignment.Center
@@ -483,7 +482,7 @@ private fun WorkerHeroCard(
                         },
                         enabled = isButtonClickable,
                         modifier = Modifier
-                            .size(176.dp)
+                            .size(216.dp)
                             .alpha(if (isButtonClickable) 1f else 0.45f)
                             .testTag("button_unified_attendance"),
                         shape = CircleShape,
@@ -502,30 +501,30 @@ private fun WorkerHeroCard(
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(4.dp)
+                            modifier = Modifier.padding(6.dp)
                         ) {
                             Icon(
                                 imageVector = buttonIcon,
                                 contentDescription = null,
-                                modifier = Modifier.size(40.dp)
+                                modifier = Modifier.size(48.dp)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             Text(
                                 text = displayTitle,
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 18.sp,
+                                    fontSize = 21.sp,
                                     color = Color.White,
                                     letterSpacing = 0.5.sp
                                 ),
                                 textAlign = TextAlign.Center
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = displaySubtitle,
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontWeight = FontWeight.SemiBold,
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     color = Color.White.copy(alpha = 0.9f)
                                 ),
                                 textAlign = TextAlign.Center,
@@ -577,7 +576,6 @@ private fun WorkerHeroCard(
 @Composable
 private fun WorkerQuickStats(
     actualWorkDays: Double,
-    otHours: Double,
     onViewTimesheet: () -> Unit = {}
 ) {
     Card(
@@ -612,20 +610,13 @@ private fun WorkerQuickStats(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround
+                horizontalArrangement = Arrangement.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Công tích lũy", style = MaterialTheme.typography.bodySmall.copy(color = HrpTextSecondary))
                     Text(
                         "$actualWorkDays công",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = HrpSuccess)
-                    )
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Làm thêm OT", style = MaterialTheme.typography.bodySmall.copy(color = HrpTextSecondary))
-                    Text(
-                        "${otHours}h",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = HrpWarning)
                     )
                 }
             }

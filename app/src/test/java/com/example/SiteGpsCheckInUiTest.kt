@@ -181,9 +181,11 @@ class SiteGpsCheckInUiTest {
         composeTestRule.onNodeWithTag("button_unified_attendance").assertIsEnabled()
         composeTestRule.onNodeWithText("VÀO CA").assertIsDisplayed()
 
-        // 6. Phone row ("SĐT: ...") and check-in cycle hint below the circular button are removed for a clean layout
+        // 6. Phone row ("SĐT: ..."), "ĐỦ ĐIỀU KIỆN" badge, "Làm thêm OT", and check-in cycle hint below the circular button are removed
         composeTestRule.onNodeWithTag("home_phone_verification_badge").assertDoesNotExist()
         composeTestRule.onNodeWithTag("check_in_cycle_hint").assertDoesNotExist()
+        composeTestRule.onNodeWithText("ĐỦ ĐIỀU KIỆN").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Làm thêm OT").assertDoesNotExist()
 
         // 7. Logout button is placed at the bottom of HomeScreen
         composeTestRule.onNodeWithTag("home_lazy_column").performScrollToNode(hasTestTag("button_logout"))
